@@ -1,0 +1,50 @@
+# Gradle
+.gradle/
+build/
+*/build/
+detachedHead
+
+# Android Studio
+.idea/
+*.iml
+*.key
+*.jks
+*.keystore
+local.properties
+local.properties.bak
+
+# Android Build Outputs
+*.ap_
+*.apk
+*.aab
+*.dex
+*.aar
+*.jar
+*.war
+*.ear
+
+# Android Resources - Generated/Compiled
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.xml
+*.tbd
+*.tiff
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+*.odt
+*.ods
+*.odp
+*.odf
+*.txt
+*.csv
+*.md
+*.rst
+*.rst.txt
