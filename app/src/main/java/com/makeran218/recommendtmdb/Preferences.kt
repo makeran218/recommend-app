@@ -20,6 +20,8 @@ object AppPreferences {
     private val LAST_SYNC_TIME_KEY = longPreferencesKey("last_sync_time")
     private val PLAYBACK_PROVIDER_KEY = stringPreferencesKey("playback_provider")
     private val DISPLAY_TYPE_KEY = stringPreferencesKey("display_type")
+    private val POSTER_PROVIDER_KEY = stringPreferencesKey("poster_provider")
+    private val ITEMS_PER_CATEGORY_KEY = intPreferencesKey("items_per_category")
 
     // Cache: store each category's items as a separate JSON string
     // Key format: "cache_<categoryKey>" -> JSON array of item objects
@@ -30,6 +32,9 @@ object AppPreferences {
 
     val DEFAULT_PLAYBACK_PROVIDER = "nuvio"
     val DEFAULT_DISPLAY_TYPE = "POSTER"
+    val DEFAULT_POSTER_PROVIDER = "tmdb" // tmdb | bttr (better-posters)
+    val DEFAULT_ITEMS_PER_CATEGORY = 20
+    val ITEMS_PER_CATEGORY_OPTIONS = listOf(20, 40, 60) // 1, 2, or 3 pages of TMDB results
 
     val DEFAULT_CATEGORIES = setOf(
         Category.TRENDING_MOVIES.key,
@@ -49,7 +54,9 @@ object AppPreferences {
         val lastSyncTime: Long,
         val apiKey: String,
         val playbackProvider: String,
-        val displayType: String
+        val displayType: String,
+        val posterProvider: String,
+        val itemsPerCategory: Int
     ) {
         fun hasApiKey(): Boolean = apiKey.isNotEmpty() && apiKey != "YOUR_TMDB_API_KEY_HERE"
     }
@@ -64,7 +71,9 @@ object AppPreferences {
             val apiKey = prefs[API_KEY_KEY] ?: ""
             val provider = prefs[PLAYBACK_PROVIDER_KEY] ?: DEFAULT_PLAYBACK_PROVIDER
             val display = prefs[DISPLAY_TYPE_KEY] ?: DEFAULT_DISPLAY_TYPE
-            Settings(enabled, lastSync, apiKey, provider, display)
+            val posterProvider = prefs[POSTER_PROVIDER_KEY] ?: DEFAULT_POSTER_PROVIDER
+            val itemsPerCategory = prefs[ITEMS_PER_CATEGORY_KEY] ?: DEFAULT_ITEMS_PER_CATEGORY
+            Settings(enabled, lastSync, apiKey, provider, display, posterProvider, itemsPerCategory)
         }
     }
 
@@ -87,6 +96,14 @@ object AppPreferences {
 
     suspend fun setDisplayType(context: Context, displayType: String) {
         context.dataStore.edit { prefs -> prefs[DISPLAY_TYPE_KEY] = displayType }
+    }
+
+    suspend fun setPosterProvider(context: Context, posterProvider: String) {
+        context.dataStore.edit { prefs -> prefs[POSTER_PROVIDER_KEY] = posterProvider }
+    }
+
+    suspend fun setItemsPerCategory(context: Context, itemsPerCategory: Int) {
+        context.dataStore.edit { prefs -> prefs[ITEMS_PER_CATEGORY_KEY] = itemsPerCategory }
     }
 
     // ─── Cache ───────────────────────────────────────────────

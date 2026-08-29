@@ -30,7 +30,7 @@ object SyncScheduler {
             .build()
 
         WorkManager.getInstance(context).enqueueUniqueWork(
-            "tmdb_sync_immediate",
+            SyncWorker.WORK_NAME,
             androidx.work.ExistingWorkPolicy.REPLACE,
             workRequest
         )

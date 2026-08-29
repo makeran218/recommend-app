@@ -11,6 +11,8 @@ object TmdbClient {
 
     private const val BASE_URL = "https://api.themoviedb.org/3/"
     private const val IMAGE_BASE_URL = "https://image.tmdb.org/t/p/"
+    private const val BTTR_BASE_URL = "https://btttr.cc/poster-a/imdb/poster-default"
+    private const val RESULTS_PER_PAGE = 20 // TMDB always returns 20 per page
 
     private val retrofit = Retrofit.Builder()
         .baseUrl(BASE_URL)
@@ -18,6 +20,58 @@ object TmdbClient {
         .build()
 
     val api: TmdbApiService = retrofit.create(TmdbApiService::class.java)
+
+    /**
+     * Calculate how many pages needed to get the requested number of items.
+     * TMDB returns exactly 20 results per page.
+     */
+    fun pagesNeeded(itemsPerCategory: Int): Int = (itemsPerCategory + RESULTS_PER_PAGE - 1) / RESULTS_PER_PAGE
+
+    /**
+     * Fetch multiple pages of results and combine them.
+     * Used when user wants more than 20 items per category.
+     */
+    suspend fun fetchMultiplePages(
+        fetchPage: suspend (page: Int) -> TmdbListResponse,
+        totalPages: Int
+    ): List<TmdbItem> {
+        if (totalPages == 1) {
+            return fetchPage(1).results
+        }
+        val allResults = mutableListOf<TmdbItem>()
+        for (page in 1..totalPages) {
+            val response = fetchPage(page)
+            allResults.addAll(response.results)
+        }
+        return allResults
+    }
+
+    /**
+     * Get poster URL based on the selected poster provider.
+     *
+     * - "tmdb" → uses TMDB image CDN (w500)
+     * - "bttr" → uses bttr.cc (Better Posters) via IMDb ID
+     *   Falls back to TMDB if IMDb ID is not available.
+     */
+    fun posterUrl(path: String?, imdbId: String? = null, posterProvider: String = "tmdb"): String {
+        path ?: return "https://placehold.co/500x750/?text=No+Poster"
+
+        val url = when (posterProvider) {
+            "bttr" -> {
+                // Try bttr.cc first, fallback to TMDB if no IMDb ID
+                imdbId?.let { id ->
+                    "https://btttr.cc/poster-a/imdb/poster-default/${id}.jpg"
+                } ?: run {
+                    // Fallback to TMDB when IMDb ID is not available
+                    "${IMAGE_BASE_URL}w500$path"
+                }
+            }
+
+            else -> "${IMAGE_BASE_URL}w500$path"
+        }
+        android.util.Log.d("TmdbClient", "posterUrl(provider=$posterProvider, imdbId=$imdbId) -> $url")
+        return url
+    }
 
     /**
      * Today's date in YYYY-MM-DD format.
@@ -50,6 +104,17 @@ object TmdbClient {
 }
 
 interface TmdbApiService {
+
+    /**
+     * Get external IDs (IMDb, TMDb, etc.) for a movie or TV show.
+     * Used to resolve the IMDb ID needed for bttr.cc posters.
+     */
+    @GET("{media_type}/{id}/external_ids")
+    suspend fun getExternalIds(
+        @Path("media_type") mediaType: String,
+        @Path("id") id: Int,
+        @Query("api_key") apiKey: String
+    ): TmdbExternalIds
 
     @GET("trending/{media_type}/{time_window}")
     suspend fun getTrending(
@@ -184,6 +249,15 @@ data class TmdbListResponse(
     val results: List<TmdbItem>
 )
 
+/**
+ * External IDs response from TMDB.
+ * Contains IMDb ID among other external service IDs.
+ */
+data class TmdbExternalIds(
+    val imdb_id: String? = null,
+    val tmdb_id: Int? = null
+)
+
 data class TmdbItem(
     val id: Int,
     val title: String? = null,
@@ -196,7 +270,8 @@ data class TmdbItem(
     val vote_average: Double? = null,
     val vote_count: Int? = null,
     val media_type: String? = null,
-    val genre_ids: List<Int>? = null
+    val genre_ids: List<Int>? = null,
+    val imdb_id: String? = null
 ) {
     val displayName: String get() = title ?: name ?: "Unknown"
 
@@ -208,6 +283,15 @@ data class TmdbItem(
 
     val posterUrl: String get() = TmdbClient.posterUrl(poster_path)
     val backdropUrl: String get() = TmdbClient.backdropUrl(backdrop_path)
+
+    /**
+     * Get poster URL with support for different poster providers.
+     * Pass the provider and IMDb ID for bttr.cc support.
+     */
+    fun posterUrl(provider: String = "tmdb"): String {
+        return TmdbClient.posterUrl(poster_path, imdb_id, provider)
+    }
+
     val type: String get() = media_type ?: if (title != null) "movie" else "tv"
     val voteDisplay: String get() = vote_average?.let { "${String.format("%.1f", it)} / 10" } ?: "N/A"
 

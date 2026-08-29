@@ -9,14 +9,12 @@ import androidx.tvprovider.media.tv.Channel
 import androidx.tvprovider.media.tv.PreviewProgram
 import androidx.tvprovider.media.tv.TvContractCompat
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.atomic.AtomicInteger
 
-class LauncherChannels(
-    private val context: Context,
-    private val scope: CoroutineScope
-) {
+class LauncherChannels(private val context: Context) {
     companion object {
         private const val TAG = "LauncherChannels"
 
@@ -32,44 +30,87 @@ class LauncherChannels(
         const val TYPE_MOVIE = 1
         const val TYPE_TV_SHOW = 2
 
-        fun syncAll(
+        /**
+         * Sync all channels synchronously — waits for ALL items to be inserted
+         * before returning. This prevents race conditions where the launcher
+         * reads channels before all items are inserted.
+         *
+         * IMPORTANT: This is a suspend function. Callers must await completion
+         * before proceeding (e.g., before saving cache or updating UI).
+         */
+        suspend fun syncAll(
             context: Context,
             itemsByCategory: Map<String, List<TmdbItem>>,
             displayType: DisplayType,
-            scope: CoroutineScope
+            posterProvider: String
         ) {
-            val launcher = LauncherChannels(context, scope)
-            launcher.syncChannels(itemsByCategory, displayType)
-        }
-    }
-
-    private fun syncChannels(itemsByCategory: Map<String, List<TmdbItem>>, displayType: DisplayType) {
-        scope.launch {
+            val launcher = LauncherChannels(context)
             try {
-                deleteAllChannels()
-
-                for ((categoryKey, items) in itemsByCategory) {
-                    val category = Category.values().find { it.key == categoryKey } ?: continue
-                    if (items.isEmpty()) continue
-
-                    syncCategory(category, items, displayType)
-                }
-
-                Log.d(TAG, "Channels synced: ${itemsByCategory.size} categories, Display: $displayType")
+                launcher.syncChannels(itemsByCategory, displayType, posterProvider)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to sync channels", e)
             }
         }
     }
 
-    private suspend fun syncCategory(category: Category, items: List<TmdbItem>, displayType: DisplayType) {
-        withContext(Dispatchers.IO) {
-            val channelId = createChannel(category)
+    /**
+     * Delete all existing channels first, then insert all items for all categories.
+     * This is a suspend function that waits for ALL inserts to complete before returning.
+     */
+    private suspend fun syncChannels(
+        itemsByCategory: Map<String, List<TmdbItem>>,
+        displayType: DisplayType,
+        posterProvider: String
+    ) {
+        val mutex = Mutex()
+        var totalInserted = 0
+        val totalItems = itemsByCategory.values.sumOf { it.size }
 
-            for (item in items) {
-                createProgram(channelId, category, item, displayType)
+        Log.d(TAG, "Starting channel sync: ${itemsByCategory.size} categories, $totalItems total items")
+
+        // Delete all existing channels first
+        deleteAllChannels()
+
+        for ((categoryKey, items) in itemsByCategory) {
+            val category = Category.values().find { it.key == categoryKey } ?: continue
+            if (items.isEmpty()) continue
+
+            Log.d(TAG, "Syncing category: $categoryKey (${items.size} items)")
+
+            syncCategory(category, items, displayType, posterProvider, mutex) {
+                totalInserted++
+                if (totalInserted % 10 == 0 || totalInserted == totalItems) {
+                    Log.d(TAG, "Inserted $totalInserted / $totalItems items...")
+                }
             }
         }
+
+        Log.d(TAG, "Channels synced: ${itemsByCategory.size} categories, $totalInserted items inserted")
+    }
+
+    /**
+     * Sync a single category's items to the launcher.
+     * Uses a mutex to ensure inserts are sequential and properly committed.
+     */
+    private suspend fun syncCategory(
+        category: Category,
+        items: List<TmdbItem>,
+        displayType: DisplayType,
+        posterProvider: String,
+        mutex: Mutex,
+        onProgress: () -> Unit
+    ) {
+        val channelId = createChannel(category)
+        Log.d(TAG, "Created channel: ${category.channelName(context)} (ID: $channelId)")
+
+        for (item in items) {
+            mutex.withLock {
+                createProgram(channelId, category, item, displayType, posterProvider)
+            }
+            onProgress()
+        }
+
+        Log.d(TAG, "Completed category: ${category.channelName(context)} (${items.size} items)")
     }
 
     private fun createChannel(category: Category): Long {
@@ -98,7 +139,13 @@ class LauncherChannels(
         return channelId
     }
 
-    private fun createProgram(channelId: Long, category: Category, item: TmdbItem, displayType: DisplayType) {
+    private fun createProgram(
+        channelId: Long,
+        category: Category,
+        item: TmdbItem,
+        displayType: DisplayType,
+        posterProvider: String
+    ) {
         val deepLinkUri = DeepLinks.buildChannelUri(item)
 
         val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -116,7 +163,13 @@ class LauncherChannels(
         when (displayType) {
             DisplayType.POSTER -> {
                 // Vertical poster image — 2:3 aspect ratio
-                val posterUri = Uri.parse(item.posterUrl)
+                val posterUri = Uri.parse(item.posterUrl(posterProvider))
+                Log.d(
+                    TAG,
+                    "Creating program: ${item.displayName}, posterProvider=$posterProvider, imdbId=${item.imdb_id}, posterUrl=${
+                        posterUri.toString().take(80)
+                    }"
+                )
                 programBuilder
                     .setPosterArtUri(posterUri)
                     .setPosterArtAspectRatio(ASPECT_RATIO_2_3)

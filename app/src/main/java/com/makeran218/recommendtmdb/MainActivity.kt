@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.MainScope
+import androidx.work.WorkManager
+import androidx.work.WorkInfo
 
 class MainActivity : ComponentActivity() {
 
@@ -134,7 +136,35 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(viewModel: TmdbViewModel) {
     val uiState by viewModel.uiState.collectAsState(initial = TmdbUiState.Success(emptyList()))
     val isLoading by viewModel.isLoading.collectAsState()
+    val syncInProgress by viewModel.syncInProgress.collectAsState()
     val settings by viewModel.settings.collectAsState()
+
+    // Show full-screen loading overlay during sync (blocks ALL interaction)
+    if (syncInProgress) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(48.dp),
+                    strokeWidth = 4.dp
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Syncing channels...",
+                    fontSize = 18.sp,
+                    color = Color.White
+                )
+                Text(
+                    "Please wait, do not close the app",
+                    fontSize = 14.sp,
+                    color = Color.Gray
+                )
+            }
+        }
+        return
+    }
 
     when {
         // API key not set — always show setup
@@ -148,7 +178,7 @@ fun MainScreen(viewModel: TmdbViewModel) {
         }
 
         isLoading -> {
-            // Show cached data with a loading overlay during sync
+            // Show cached data with a loading overlay during initial load
             val state = uiState as? TmdbUiState.Success
             if (state != null && state.rows.isNotEmpty()) {
                 ChannelsScreen(
@@ -159,6 +189,8 @@ fun MainScreen(viewModel: TmdbViewModel) {
                     onRefresh = { viewModel.retry() },
                     onProviderChange = { provider -> viewModel.setPlaybackProvider(provider) },
                     onDisplayChange = { display -> viewModel.setDisplayType(display) },
+                    onPosterProviderChange = { provider -> viewModel.setPosterProvider(provider) },
+                    onItemsPerCategoryChange = { items -> viewModel.setItemsPerCategory(items) },
                     isSyncing = true
                 )
             } else {
@@ -175,7 +207,9 @@ fun MainScreen(viewModel: TmdbViewModel) {
                 onSync = { viewModel.syncChannels() },
                 onRefresh = { viewModel.retry() },
                 onProviderChange = { provider -> viewModel.setPlaybackProvider(provider) },
-                onDisplayChange = { display -> viewModel.setDisplayType(display) }
+                onDisplayChange = { display -> viewModel.setDisplayType(display) },
+                onPosterProviderChange = { provider -> viewModel.setPosterProvider(provider) },
+                onItemsPerCategoryChange = { items -> viewModel.setItemsPerCategory(items) }
             )
         }
     }
@@ -277,6 +311,8 @@ fun ChannelsScreen(
     onRefresh: () -> Unit,
     onProviderChange: (String) -> Unit,
     onDisplayChange: (String) -> Unit,
+    onPosterProviderChange: (String) -> Unit = {},
+    onItemsPerCategoryChange: (Int) -> Unit = {},
     isSyncing: Boolean = false
 ) {
     val enabledSet = settings.enabledCategories
@@ -418,6 +454,93 @@ fun ChannelsScreen(
                         )
                     ) {
                         Text("Wide", color = if (isWideSelected) MaterialTheme.colorScheme.primary else Color.White)
+                    }
+                }
+            }
+
+            // Poster Source
+            item {
+                Text(
+                    "Poster Source",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val isTmdbSelected = settings.posterProvider == "tmdb"
+                    OutlinedButton(
+                        onClick = { onPosterProviderChange("tmdb") },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (isTmdbSelected) MaterialTheme.colorScheme.primary else Color.White
+                        )
+                    ) {
+                        Text("TMDB", color = if (isTmdbSelected) MaterialTheme.colorScheme.primary else Color.White)
+                    }
+
+                    val isBttrSelected = settings.posterProvider == "bttr"
+                    OutlinedButton(
+                        onClick = { onPosterProviderChange("bttr") },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (isBttrSelected) MaterialTheme.colorScheme.primary else Color.White
+                        )
+                    ) {
+                        Text(
+                            "Better Posters",
+                            color = if (isBttrSelected) MaterialTheme.colorScheme.primary else Color.White
+                        )
+                    }
+                }
+            }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "⚠ ",
+                        fontSize = 14.sp,
+                        color = Color(0xFFFFA500)
+                    )
+                    Text(
+                        "Tap \"Sync Channels Now\" to apply poster changes",
+                        fontSize = 12.sp,
+                        color = Color(0xFFFFA500)
+                    )
+                }
+            }
+
+            // Items Per Category
+            item {
+                Text(
+                    "Items Per Category",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AppPreferences.ITEMS_PER_CATEGORY_OPTIONS.forEach { count ->
+                        val isSelected = settings.itemsPerCategory == count
+                        OutlinedButton(
+                            onClick = { onItemsPerCategoryChange(count) },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.White
+                            )
+                        ) {
+                            Text("$count", color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White)
+                        }
                     }
                 }
             }
@@ -565,7 +688,10 @@ class TmdbViewModel(application: android.app.Application) : androidx.lifecycle.A
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
-    private val _settings = MutableStateFlow(AppPreferences.Settings(emptySet(), 0, "", "nuvio", "POSTER"))
+    private val _syncInProgress = MutableStateFlow(false)
+    val syncInProgress: StateFlow<Boolean> = _syncInProgress
+
+    private val _settings = MutableStateFlow(AppPreferences.Settings(emptySet(), 0, "", "nuvio", "POSTER", "tmdb", 20))
     val settings: StateFlow<AppPreferences.Settings> = _settings
 
     private val context = application.applicationContext
@@ -609,12 +735,49 @@ class TmdbViewModel(application: android.app.Application) : androidx.lifecycle.A
         }
     }
 
+    fun setPosterProvider(posterProvider: String) {
+        MainScope().launch {
+            AppPreferences.setPosterProvider(context, posterProvider)
+        }
+    }
+
+    fun setItemsPerCategory(itemsPerCategory: Int) {
+        MainScope().launch {
+            AppPreferences.setItemsPerCategory(context, itemsPerCategory)
+        }
+    }
+
     fun syncChannels() {
         MainScope().launch {
-            SyncScheduler.triggerSync(context)
-            loadCategories { rows ->
-                // Save fresh data to cache after loading
-                MainScope().launch { AppPreferences.saveCachedItems(context, rows) }
+            // Block UI during sync
+            _syncInProgress.value = true
+            Log.d("TmdbViewModel", "Sync started — blocking UI...")
+
+            try {
+                // 1. Trigger SyncWorker to fetch all data (including IMDb IDs for bttr.cc)
+                SyncScheduler.triggerSync(context)
+                Log.d("TmdbViewModel", "Sync triggered — waiting for completion...")
+
+                // 2. Wait for SyncWorker to complete using WorkManager
+                WorkManager.getInstance(context)
+                    .getWorkInfosForUniqueWorkFlow(SyncWorker.WORK_NAME)
+                    .first { workInfoList ->
+                        // Check if worker has finished (success or failure)
+                        workInfoList.any {
+                            it.state == WorkInfo.State.SUCCEEDED ||
+                                    it.state == WorkInfo.State.FAILED
+                        }
+                    }
+
+                Log.d("TmdbViewModel", "SyncWorker completed — loading fresh cache")
+
+                // 3. NOW load from cache (which has fresh data from SyncWorker)
+                //    This ensures UI always shows the latest synced data
+                loadCachedData()
+            } finally {
+                // Unblock UI
+                _syncInProgress.value = false
+                Log.d("TmdbViewModel", "Sync finished — UI unblocked")
             }
         }
     }
@@ -635,11 +798,11 @@ class TmdbViewModel(application: android.app.Application) : androidx.lifecycle.A
 
             for (categoryKey in settings.enabledCategories) {
                 val category = Category.fromKey(categoryKey) ?: continue
-                val items = fetchCategoryItems(apiKey, category)
+                val items = fetchCategoryItems(apiKey, category, settings.itemsPerCategory)
                 val count = items.size
                 android.util.Log.d(
                     "TmdbViewModel",
-                    "Category $categoryKey: ${count} items (enabled=${settings.enabledCategories.contains(categoryKey)})"
+                    "Category $categoryKey: ${count} items (enabled=${settings.enabledCategories.contains(categoryKey)}, requested=${settings.itemsPerCategory})"
                 )
                 if (items.isNotEmpty()) {
                     rows.add(CategoryRow(category, items))
@@ -655,30 +818,75 @@ class TmdbViewModel(application: android.app.Application) : androidx.lifecycle.A
         }
     }
 
-    private suspend fun fetchCategoryItems(apiKey: String, category: Category): List<TmdbItem> {
+    private suspend fun fetchCategoryItems(
+        apiKey: String,
+        category: Category,
+        itemsPerCategory: Int
+    ): List<TmdbItem> {
         return try {
-            val response = when (category.key) {
-                Category.TRENDING_MOVIES.key -> TmdbClient.api.getTrending("movie", "week", apiKey)
-                Category.TRENDING_TV.key -> TmdbClient.api.getTrending("tv", "week", apiKey)
-                Category.LATEST_MOVIES.key -> TmdbClient.api.discoverLatestMovies(apiKey)
-                Category.LATEST_TV.key -> TmdbClient.api.discoverTvShows(apiKey, "first_air_date.desc")
-                Category.POPULAR_MOVIES.key -> TmdbClient.api.discoverMovies(apiKey, "popularity.desc")
-                Category.POPULAR_TV.key -> TmdbClient.api.discoverTvShows(apiKey, "popularity.desc")
-                Category.NETFLIX_POPULAR_MOVIES.key -> TmdbClient.api.discoverNetflixPopularMovies(apiKey)
-                Category.NETFLIX_POPULAR_TV.key -> TmdbClient.api.discoverNetflixPopularTv(apiKey)
-                Category.NETFLIX_NEW_MOVIES.key -> TmdbClient.api.discoverNetflixNewMovies(apiKey)
-                Category.NETFLIX_NEW_TV.key -> TmdbClient.api.discoverNetflixNewTv(apiKey)
-                else -> TmdbListResponse(0, 0, 0, emptyList())
+            val totalPages = TmdbClient.pagesNeeded(itemsPerCategory)
+            val shouldFetchMultiplePages = totalPages > 1
+
+            val results = if (shouldFetchMultiplePages) {
+                // Fetch multiple pages and combine
+                TmdbClient.fetchMultiplePages(
+                    { page -> fetchSinglePage(apiKey, category.key, page) },
+                    totalPages
+                )
+            } else {
+                fetchSinglePage(apiKey, category.key, 1).results
             }
+
+            android.util.Log.d(
+                "TmdbViewModel",
+                "Category ${category.key}: fetched ${results.size} items from $totalPages page(s)"
+            )
 
             // Filter out unreleased items (trending can include upcoming titles)
             // Discover endpoints already filter server-side, but this is a safety net
-            response.results
-                .filter { it.isReleased }
-                .take(20)
+            val filteredResults = results.filter { it.isReleased }.take(itemsPerCategory)
+            if (filteredResults.size < itemsPerCategory) {
+                android.util.Log.w(
+                    "TmdbViewModel",
+                    "Category ${category.key}: only ${filteredResults.size} items available (requested $itemsPerCategory)"
+                )
+            }
+            filteredResults
         } catch (e: Exception) {
             android.util.Log.w("TmdbViewModel", "Failed to fetch ${category.key}: ${e.message}")
             emptyList()
+        }
+    }
+
+    /**
+     * Fetch a single page for a category.
+     * Used internally for multi-page fetching.
+     */
+    private suspend fun fetchSinglePage(apiKey: String, categoryKey: String, page: Int): TmdbListResponse {
+        return try {
+            val response = when (categoryKey) {
+                Category.TRENDING_MOVIES.key -> TmdbClient.api.getTrending("movie", "week", apiKey, page)
+                Category.TRENDING_TV.key -> TmdbClient.api.getTrending("tv", "week", apiKey, page)
+                Category.LATEST_MOVIES.key -> TmdbClient.api.discoverLatestMovies(apiKey, page = page)
+                Category.LATEST_TV.key -> TmdbClient.api.discoverTvShows(apiKey, "first_air_date.desc", page = page)
+                Category.POPULAR_MOVIES.key -> TmdbClient.api.discoverMovies(apiKey, "popularity.desc", page = page)
+                Category.POPULAR_TV.key -> TmdbClient.api.discoverTvShows(apiKey, "popularity.desc", page = page)
+                Category.NETFLIX_POPULAR_MOVIES.key -> TmdbClient.api.discoverNetflixPopularMovies(apiKey, page = page)
+                Category.NETFLIX_POPULAR_TV.key -> TmdbClient.api.discoverNetflixPopularTv(apiKey, page = page)
+                Category.NETFLIX_NEW_MOVIES.key -> TmdbClient.api.discoverNetflixNewMovies(apiKey, page = page)
+                Category.NETFLIX_NEW_TV.key -> TmdbClient.api.discoverNetflixNewTv(apiKey, page = page)
+                else -> TmdbListResponse(0, 0, 0, emptyList())
+            }
+            if (page > 1) {
+                android.util.Log.d(
+                    "TmdbViewModel",
+                    "Fetched page $page of $categoryKey (${response.results.size} items)"
+                )
+            }
+            response
+        } catch (e: Exception) {
+            android.util.Log.w("TmdbViewModel", "Failed to fetch page $page of $categoryKey", e)
+            TmdbListResponse(page, 0, 0, emptyList())
         }
     }
 
