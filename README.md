@@ -70,15 +70,9 @@ All Netflix rows filter by:
 3. Go to Settings → API → Create an API Key
 4. Copy your API key
 
-### 2. Configure the API Key
+### 2. Set the API Key
 
-Edit `app/src/main/res/values/strings.xml` and replace:
-
-```xml
-<string name="tmdb_api_key">YOUR_TMDB_API_KEY_HERE</string>
-```
-
-with your actual TMDB API key.
+After installing the app on your Android TV, open it and enter your TMDB API key in the app's settings screen. You can get an API key at [https://www.themoviedb.org/settings/api](https://www.themoviedb.org/settings/api).
 
 ### 3. Build
 
