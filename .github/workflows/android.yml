@@ -9,6 +9,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      packages: write
 
     steps:
       - name: Checkout code
@@ -36,12 +39,11 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ github.run_number }}
-          name: Release ${{ github.run_number }}
-          files: app/build/outputs/apk/debug/app-debug.apk
-          draft: false
-          prerelease: true
+        run: |
+          gh release create v${{ github.run_number }} \
+            app/build/outputs/apk/debug/app-debug.apk \
+            --title "Release ${{ github.run_number }}" \
+            --prerelease \
+            --generate-notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
