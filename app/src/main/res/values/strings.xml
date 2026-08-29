@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- TMDB API Key - REPLACE WITH YOUR OWN KEY -->
+    <string name="tmdb_api_key">YOUR_TMDB_API_KEY_HERE</string>
+    <string name="app_name">Recommended App</string>
+
+    <!-- Channel categories -->
+    <string name="channel_trending_movies">Trending Movies</string>
+    <string name="channel_trending_tv">Trending TV Shows</string>
+    <string name="channel_latest_movies">Latest Movies</string>
+    <string name="channel_latest_tv">Latest TV Shows</string>
+    <string name="channel_popular_movies">Popular Movies</string>
+    <string name="channel_popular_tv">Popular TV Shows</string>
+    <string name="channel_netflix_popular_movies">Netflix Popular Movies</string>
+    <string name="channel_netflix_popular_tv">Netflix Popular TV Shows</string>
+    <string name="channel_netflix_new_movies">Netflix New Movies</string>
+    <string name="channel_netflix_new_tv">Netflix New TV Shows</string>
+
+    <!-- Content descriptions -->
+    <string name="content_description_movie_poster">Movie poster</string>
+    <string name="content_description_tv_poster">TV Show poster</string>
+</resources>
