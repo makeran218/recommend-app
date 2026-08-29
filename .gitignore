@@ -29,7 +29,6 @@ local.properties.bak
 *.jpeg
 *.gif
 *.svg
-*.xml
 *.tbd
 *.tiff
 *.pdf

@@ -4,8 +4,12 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -16,6 +20,11 @@ object AppPreferences {
     private val LAST_SYNC_TIME_KEY = longPreferencesKey("last_sync_time")
     private val PLAYBACK_PROVIDER_KEY = stringPreferencesKey("playback_provider")
     private val DISPLAY_TYPE_KEY = stringPreferencesKey("display_type")
+
+    // Cache: store each category's items as a separate JSON string
+    // Key format: "cache_<categoryKey>" -> JSON array of item objects
+    // "cache_meta" -> { "cachedAt": <timestamp> }
+    private val CACHED_TIME_KEY = longPreferencesKey("cached_time")
 
     val DEFAULT_PLAYBACK_PROVIDER = "nuvio"
     val DEFAULT_DISPLAY_TYPE = "POSTER"
@@ -77,6 +86,63 @@ object AppPreferences {
     suspend fun setDisplayType(context: Context, displayType: String) {
         context.dataStore.edit { prefs -> prefs[DISPLAY_TYPE_KEY] = displayType }
     }
+
+    // ─── Cache ───────────────────────────────────────────────
+
+    data class CacheEntry(
+        val items: List<Map<String, Any?>>,
+        val cachedAt: Long
+    )
+
+    suspend fun saveCachedItems(context: Context, items: List<CategoryRow>) {
+        context.dataStore.edit { prefs ->
+            val gson = Gson()
+            for (row in items) {
+                // Store each category as a separate key: "cache_trending_movies", etc.
+                val json = gson.toJson(row.items)
+                prefs[stringPreferencesKey("cache_${row.category.key}")] = json
+            }
+            prefs[CACHED_TIME_KEY] = System.currentTimeMillis()
+        }
+    }
+
+    suspend fun loadCachedItems(context: Context): List<CategoryRow>? {
+        val prefs = context.dataStore.data.first()
+        val gson = Gson()
+        val rows = mutableListOf<CategoryRow>()
+
+        for (category in Category.values()) {
+            val json = prefs[stringPreferencesKey("cache_${category.key}")]
+            if (json.isNullOrEmpty()) continue
+            try {
+                val items = gson.fromJson(
+                    json,
+                    object : com.google.gson.reflect.TypeToken<List<TmdbItem>>() {}.type
+                ) as List<TmdbItem>
+                if (items.isNotEmpty()) {
+                    rows.add(CategoryRow(category, items))
+                }
+            } catch (e: Exception) {
+                // Corrupted cache entry — skip it
+                android.util.Log.w("AppPreferences", "Failed to load cache for ${category.key}: ${e.message}")
+            }
+        }
+
+        return rows.takeIf { it.isNotEmpty() }
+    }
+
+    suspend fun clearCachedItems(context: Context) {
+        context.dataStore.edit { prefs ->
+            for (category in Category.values()) {
+                prefs.remove(stringPreferencesKey("cache_${category.key}"))
+            }
+            prefs.remove(CACHED_TIME_KEY)
+        }
+    }
+
+    fun getCachedTime(context: Context): Flow<Long> {
+        return context.dataStore.data.map { it[CACHED_TIME_KEY] ?: 0L }
+    }
 }
 
 enum class Category(val key: String, val displayNameRes: Int) {
@@ -90,6 +156,10 @@ enum class Category(val key: String, val displayNameRes: Int) {
     NETFLIX_POPULAR_TV("netflix_popular_tv", R.string.channel_netflix_popular_tv),
     NETFLIX_NEW_MOVIES("netflix_new_movies", R.string.channel_netflix_new_movies),
     NETFLIX_NEW_TV("netflix_new_tv", R.string.channel_netflix_new_tv);
+
+    companion object {
+        fun fromKey(key: String): Category? = values().find { it.key == key }
+    }
 
     fun channelId(): String = "tmdb_$key"
     fun channelName(context: android.content.Context): String = context.getString(displayNameRes)

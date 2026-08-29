@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -54,11 +55,6 @@ class MainActivity : ComponentActivity() {
                     MainScreen(viewModel)
                 }
             }
-        }
-
-        // Sync channels on startup
-        MainScope().launch {
-            SyncScheduler.triggerSync(application)
         }
     }
 
@@ -134,22 +130,25 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainScreen(viewModel: TmdbViewModel) {
-    val uiState by viewModel.uiState.collectAsState(initial = TmdbUiState.Loading)
+    val uiState by viewModel.uiState.collectAsState(initial = TmdbUiState.Success(emptyList()))
+    val isLoading by viewModel.isLoading.collectAsState()
     val settings by viewModel.settings.collectAsState()
 
-    when (uiState) {
-        is TmdbUiState.Loading -> LoadingScreen()
-        is TmdbUiState.Error -> {
+    when {
+        // API key not set — always show setup
+        settings.apiKey.isBlank() || settings.apiKey == "YOUR_TMDB_API_KEY_HERE" -> {
+            SetupScreen(onApiKeySet = { key -> viewModel.setApiKey(key) })
+        }
+
+        uiState is TmdbUiState.Error -> {
             val e = uiState as TmdbUiState.Error
             ErrorScreen(e.message) { viewModel.retry() }
         }
 
-        is TmdbUiState.Success -> {
-            val state = uiState as TmdbUiState.Success
-
-            if (settings.apiKey.isBlank() || settings.apiKey == "YOUR_TMDB_API_KEY_HERE") {
-                SetupScreen(onApiKeySet = { key -> viewModel.setApiKey(key) })
-            } else {
+        isLoading -> {
+            // Show cached data with a loading overlay during sync
+            val state = uiState as? TmdbUiState.Success
+            if (state != null && state.rows.isNotEmpty()) {
                 ChannelsScreen(
                     rows = state.rows,
                     settings = settings,
@@ -157,9 +156,25 @@ fun MainScreen(viewModel: TmdbViewModel) {
                     onSync = { viewModel.syncChannels() },
                     onRefresh = { viewModel.retry() },
                     onProviderChange = { provider -> viewModel.setPlaybackProvider(provider) },
-                    onDisplayChange = { display -> viewModel.setDisplayType(display) }
+                    onDisplayChange = { display -> viewModel.setDisplayType(display) },
+                    isSyncing = true
                 )
+            } else {
+                LoadingScreen()
             }
+        }
+
+        else -> {
+            val state = uiState as TmdbUiState.Success
+            ChannelsScreen(
+                rows = state.rows,
+                settings = settings,
+                onApiKeyChange = { key -> viewModel.setApiKey(key) },
+                onSync = { viewModel.syncChannels() },
+                onRefresh = { viewModel.retry() },
+                onProviderChange = { provider -> viewModel.setPlaybackProvider(provider) },
+                onDisplayChange = { display -> viewModel.setDisplayType(display) }
+            )
         }
     }
 }
@@ -259,7 +274,8 @@ fun ChannelsScreen(
     onSync: () -> Unit,
     onRefresh: () -> Unit,
     onProviderChange: (String) -> Unit,
-    onDisplayChange: (String) -> Unit
+    onDisplayChange: (String) -> Unit,
+    isSyncing: Boolean = false
 ) {
     val enabledSet = settings.enabledCategories
     var showApiKeyEdit by remember { mutableStateOf(false) }
@@ -276,12 +292,22 @@ fun ChannelsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "TMDB TV Home",
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "TMDB TV Home",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    if (isSyncing) {
+                        Spacer(Modifier.width(8.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
                 IconButton(onClick = onRefresh) {
                     Icon(Icons.Default.Refresh, "Sync", tint = Color.White)
                 }
@@ -506,6 +532,9 @@ class TmdbViewModel(application: android.app.Application) : androidx.lifecycle.A
     private val _uiState = MutableStateFlow<TmdbUiState>(TmdbUiState.Success(emptyList()))
     val uiState: StateFlow<TmdbUiState> = _uiState
 
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading
+
     private val _settings = MutableStateFlow(AppPreferences.Settings(emptySet(), 0, "", "nuvio", "POSTER"))
     val settings: StateFlow<AppPreferences.Settings> = _settings
 
@@ -516,12 +545,18 @@ class TmdbViewModel(application: android.app.Application) : androidx.lifecycle.A
             AppPreferences.readPreferences(context).collect { s ->
                 _settings.value = s
                 DeepLinks.setProvider(DeepLinks.getProvider(s.playbackProvider))
+                // Load cached data on startup so the UI isn't blank
                 if (s.hasApiKey()) {
-                    loadCategories()
-                } else {
-                    _uiState.value = TmdbUiState.Success(emptyList())
+                    loadCachedData()
                 }
             }
+        }
+    }
+
+    private suspend fun loadCachedData() {
+        val cached = AppPreferences.loadCachedItems(context)
+        if (cached != null) {
+            _uiState.value = TmdbUiState.Success(cached)
         }
     }
 
@@ -547,10 +582,14 @@ class TmdbViewModel(application: android.app.Application) : androidx.lifecycle.A
     fun syncChannels() {
         MainScope().launch {
             SyncScheduler.triggerSync(context)
+            loadCategories { rows ->
+                // Save fresh data to cache after loading
+                MainScope().launch { AppPreferences.saveCachedItems(context, rows) }
+            }
         }
     }
 
-    suspend fun loadCategories() {
+    suspend fun loadCategories(onLoaded: ((List<CategoryRow>) -> Unit)? = null) {
         val settings = AppPreferences.readPreferences(context).first()
         val apiKey = settings.apiKey
 
@@ -559,13 +598,13 @@ class TmdbViewModel(application: android.app.Application) : androidx.lifecycle.A
             return
         }
 
-        _uiState.value = TmdbUiState.Loading
+        _isLoading.value = true
 
         try {
             val rows = mutableListOf<CategoryRow>()
 
             for (categoryKey in settings.enabledCategories) {
-                val category = Category.values().find { it.key == categoryKey } ?: continue
+                val category = Category.fromKey(categoryKey) ?: continue
                 val items = fetchCategoryItems(apiKey, category)
                 val count = items.size
                 android.util.Log.d(
@@ -578,8 +617,11 @@ class TmdbViewModel(application: android.app.Application) : androidx.lifecycle.A
             }
 
             _uiState.value = TmdbUiState.Success(rows)
+            onLoaded?.invoke(rows)
         } catch (e: Exception) {
             _uiState.value = TmdbUiState.Error(e.message ?: "Unknown error")
+        } finally {
+            _isLoading.value = false
         }
     }
 
@@ -613,10 +655,12 @@ class TmdbViewModel(application: android.app.Application) : androidx.lifecycle.A
     fun retry() {
         MainScope().launch { loadCategories() }
     }
+
+    /** Returns cached data timestamp for the "last updated" indicator. */
+    fun getCachedTime(): Flow<Long> = AppPreferences.getCachedTime(context)
 }
 
 sealed interface TmdbUiState {
-    object Loading : TmdbUiState
     data class Success(val rows: List<CategoryRow>) : TmdbUiState
     data class Error(val message: String) : TmdbUiState
 }

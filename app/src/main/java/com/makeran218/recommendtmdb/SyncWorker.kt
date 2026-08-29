@@ -49,6 +49,15 @@ class SyncWorker(
             // Update launcher channels with display type
             LauncherChannels.syncAll(context, itemsByCategory, displayType, kotlinx.coroutines.MainScope())
 
+            // Update JSON cache so the UI shows fresh data
+            val cachedRows = itemsByCategory.mapNotNull { (key, items) ->
+                val category = Category.values().find { it.key == key } ?: return@mapNotNull null
+                CategoryRow(category, items)
+            }
+            if (cachedRows.isNotEmpty()) {
+                AppPreferences.saveCachedItems(context, cachedRows)
+            }
+
             // Update last sync time
             AppPreferences.setLastSyncTime(context, System.currentTimeMillis())
 
