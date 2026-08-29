@@ -24,6 +24,8 @@ object AppPreferences {
     // Cache: store each category's items as a separate JSON string
     // Key format: "cache_<categoryKey>" -> JSON array of item objects
     // "cache_meta" -> { "cachedAt": <timestamp> }
+    // "cached_items" -> old format (single JSON object) — migrated away
+    private val CACHED_ITEMS_KEY = stringPreferencesKey("cached_items")
     private val CACHED_TIME_KEY = longPreferencesKey("cached_time")
 
     val DEFAULT_PLAYBACK_PROVIDER = "nuvio"
@@ -107,14 +109,14 @@ object AppPreferences {
     }
 
     suspend fun loadCachedItems(context: Context): List<CategoryRow>? {
-        val prefs = context.dataStore.data.first()
-        val gson = Gson()
-        val rows = mutableListOf<CategoryRow>()
+        return try {
+            val prefs = context.dataStore.data.first()
+            val gson = Gson()
+            val rows = mutableListOf<CategoryRow>()
 
-        for (category in Category.values()) {
-            val json = prefs[stringPreferencesKey("cache_${category.key}")]
-            if (json.isNullOrEmpty()) continue
-            try {
+            for (category in Category.values()) {
+                val json = prefs[stringPreferencesKey("cache_${category.key}")]
+                if (json.isNullOrEmpty()) continue
                 val items = gson.fromJson(
                     json,
                     object : com.google.gson.reflect.TypeToken<List<TmdbItem>>() {}.type
@@ -122,13 +124,25 @@ object AppPreferences {
                 if (items.isNotEmpty()) {
                     rows.add(CategoryRow(category, items))
                 }
-            } catch (e: Exception) {
-                // Corrupted cache entry — skip it
-                android.util.Log.w("AppPreferences", "Failed to load cache for ${category.key}: ${e.message}")
             }
-        }
 
-        return rows.takeIf { it.isNotEmpty() }
+            rows.takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            // Any cache error — clear everything and return null
+            android.util.Log.e("AppPreferences", "Cache load failed, clearing: ${e.message}", e)
+            try {
+                context.dataStore.edit { p ->
+                    for (category in Category.values()) {
+                        p.remove(stringPreferencesKey("cache_${category.key}"))
+                    }
+                    p.remove(CACHED_TIME_KEY)
+                    p.remove(CACHED_ITEMS_KEY)
+                }
+            } catch (ignore: Exception) {
+                // Ignore clear errors
+            }
+            null
+        }
     }
 
     suspend fun clearCachedItems(context: Context) {

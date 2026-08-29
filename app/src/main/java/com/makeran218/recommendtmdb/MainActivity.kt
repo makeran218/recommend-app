@@ -7,9 +7,11 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -281,199 +283,219 @@ fun ChannelsScreen(
     var showApiKeyEdit by remember { mutableStateOf(false) }
     var tempApiKey by remember { mutableStateOf(settings.apiKey) }
 
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF1A1A2E)),
-        contentAlignment = Alignment.Center
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color(0xFF1A1A2E)
     ) {
-        Column(modifier = Modifier.padding(32.dp)) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .padding(32.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(vertical = 8.dp)
+        ) {
             // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "TMDB TV Home",
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    if (isSyncing) {
-                        Spacer(Modifier.width(8.dp))
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "TMDB TV Home",
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
+                        if (isSyncing) {
+                            Spacer(Modifier.width(8.dp))
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    IconButton(onClick = onRefresh) {
+                        Icon(Icons.Default.Refresh, "Sync", tint = Color.White)
                     }
                 }
-                IconButton(onClick = onRefresh) {
-                    Icon(Icons.Default.Refresh, "Sync", tint = Color.White)
-                }
             }
-
-            Spacer(Modifier.height(8.dp))
 
             // Sync button
-            Button(
-                onClick = onSync,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Default.Refresh, null, tint = MaterialTheme.colorScheme.onPrimary)
-                Spacer(Modifier.width(8.dp))
-                Text("Sync Channels Now", color = MaterialTheme.colorScheme.onPrimary)
-            }
-
-            Spacer(Modifier.height(24.dp))
-
-            // ─── Settings Section ───
-            Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            Spacer(Modifier.height(8.dp))
-
-            // Playback Provider selection
-            Text(
-                "Playback App",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.height(4.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val isNuvioSelected = settings.playbackProvider == "nuvio"
-                OutlinedButton(
-                    onClick = { onProviderChange("nuvio") },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (isNuvioSelected) MaterialTheme.colorScheme.primary else Color.White
-                    )
+            item {
+                Button(
+                    onClick = onSync,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Nuvio", color = if (isNuvioSelected) MaterialTheme.colorScheme.primary else Color.White)
-                }
-
-                val isStremioSelected = settings.playbackProvider == "stremio"
-                OutlinedButton(
-                    onClick = { onProviderChange("stremio") },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (isStremioSelected) MaterialTheme.colorScheme.primary else Color.White
-                    )
-                ) {
-                    Text("Stremio", color = if (isStremioSelected) MaterialTheme.colorScheme.primary else Color.White)
+                    Icon(Icons.Default.Refresh, null, tint = MaterialTheme.colorScheme.onPrimary)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Sync Channels Now", color = MaterialTheme.colorScheme.onPrimary)
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
-
-            // Display Type selection
-            Text(
-                "Display Type",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.height(4.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val isPosterSelected = settings.displayType == "POSTER"
-                OutlinedButton(
-                    onClick = { onDisplayChange("POSTER") },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (isPosterSelected) MaterialTheme.colorScheme.primary else Color.White
-                    )
-                ) {
-                    Text("Poster", color = if (isPosterSelected) MaterialTheme.colorScheme.primary else Color.White)
-                }
-
-                val isWideSelected = settings.displayType == "WIDE"
-                OutlinedButton(
-                    onClick = { onDisplayChange("WIDE") },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (isWideSelected) MaterialTheme.colorScheme.primary else Color.White
-                    )
-                ) {
-                    Text("Wide", color = if (isWideSelected) MaterialTheme.colorScheme.primary else Color.White)
-                }
+            // Settings header
+            item {
+                Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
             }
 
-            Spacer(Modifier.height(16.dp))
+            // Playback Provider
+            item {
+                Text(
+                    "Playback App",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val isNuvioSelected = settings.playbackProvider == "nuvio"
+                    OutlinedButton(
+                        onClick = { onProviderChange("nuvio") },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (isNuvioSelected) MaterialTheme.colorScheme.primary else Color.White
+                        )
+                    ) {
+                        Text("Nuvio", color = if (isNuvioSelected) MaterialTheme.colorScheme.primary else Color.White)
+                    }
 
-            // API Key section
-            Text("API Key", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(4.dp))
-
-            OutlinedTextField(
-                value = settings.apiKey,
-                onValueChange = {},
-                label = { Text("TMDB API Key", color = Color.Gray) },
-                modifier = Modifier.fillMaxWidth(),
-                readOnly = !showApiKeyEdit,
-                trailingIcon = {
-                    IconButton(onClick = {
-                        if (showApiKeyEdit) {
-                            if (tempApiKey.isNotBlank() && tempApiKey != "YOUR_TMDB_API_KEY_HERE") {
-                                onApiKeyChange(tempApiKey)
-                            }
-                            showApiKeyEdit = false
-                        } else {
-                            tempApiKey = settings.apiKey
-                            showApiKeyEdit = true
-                        }
-                    }) {
-                        Icon(
-                            imageVector = if (showApiKeyEdit) Icons.Default.Check else Icons.Default.Edit,
-                            contentDescription = if (showApiKeyEdit) "Save" else "Edit",
-                            tint = Color.White
+                    val isStremioSelected = settings.playbackProvider == "stremio"
+                    OutlinedButton(
+                        onClick = { onProviderChange("stremio") },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (isStremioSelected) MaterialTheme.colorScheme.primary else Color.White
+                        )
+                    ) {
+                        Text(
+                            "Stremio",
+                            color = if (isStremioSelected) MaterialTheme.colorScheme.primary else Color.White
                         )
                     }
                 }
-            )
+            }
 
-            if (showApiKeyEdit) {
-                OutlinedTextField(
-                    value = tempApiKey,
-                    onValueChange = { tempApiKey = it },
+            // Display Type
+            item {
+                Text(
+                    "Display Type",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            item {
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = false,
-                    maxLines = 3
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val isPosterSelected = settings.displayType == "POSTER"
+                    OutlinedButton(
+                        onClick = { onDisplayChange("POSTER") },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (isPosterSelected) MaterialTheme.colorScheme.primary else Color.White
+                        )
+                    ) {
+                        Text("Poster", color = if (isPosterSelected) MaterialTheme.colorScheme.primary else Color.White)
+                    }
+
+                    val isWideSelected = settings.displayType == "WIDE"
+                    OutlinedButton(
+                        onClick = { onDisplayChange("WIDE") },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (isWideSelected) MaterialTheme.colorScheme.primary else Color.White
+                        )
+                    ) {
+                        Text("Wide", color = if (isWideSelected) MaterialTheme.colorScheme.primary else Color.White)
+                    }
+                }
+            }
+
+            // API Key
+            item {
+                Text(
+                    "API Key",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            item {
+                OutlinedTextField(
+                    value = settings.apiKey,
+                    onValueChange = {},
+                    label = { Text("TMDB API Key", color = Color.Gray) },
+                    modifier = Modifier.fillMaxWidth(),
+                    readOnly = !showApiKeyEdit,
+                    trailingIcon = {
+                        IconButton(onClick = {
+                            if (showApiKeyEdit) {
+                                if (tempApiKey.isNotBlank() && tempApiKey != "YOUR_TMDB_API_KEY_HERE") {
+                                    onApiKeyChange(tempApiKey)
+                                }
+                                showApiKeyEdit = false
+                            } else {
+                                tempApiKey = settings.apiKey
+                                showApiKeyEdit = true
+                            }
+                        }) {
+                            Icon(
+                                imageVector = if (showApiKeyEdit) Icons.Default.Check else Icons.Default.Edit,
+                                contentDescription = if (showApiKeyEdit) "Save" else "Edit",
+                                tint = Color.White
+                            )
+                        }
+                    }
+                )
+            }
+            if (showApiKeyEdit) {
+                item {
+                    OutlinedTextField(
+                        value = tempApiKey,
+                        onValueChange = { tempApiKey = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = false,
+                        maxLines = 3
+                    )
+                }
+            }
+
+            // Channel list header
+            item {
+                val itemCount = rows.size
+                val emptyCount = enabledSet.size - itemCount
+                Text(
+                    "TV Channels ($itemCount / ${enabledSet.size})",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
                 )
             }
 
-            Spacer(Modifier.height(24.dp))
+            // Channel items
+            items(rows) { row ->
+                ChannelItem(row.category, row.items.size)
+            }
 
-            // Channels list — show all enabled categories
-            val itemCount = rows.size
-            val emptyCount = enabledSet.size - itemCount
-            Text(
-                "TV Channels ($itemCount / ${enabledSet.size})",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-            Spacer(Modifier.height(8.dp))
-
-            LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                items(rows) { row ->
-                    ChannelItem(row.category, row.items.size)
-                }
-                if (emptyCount > 0) {
-                    item {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                "⚠️ $emptyCount channel(s) had no data — check API key or retry",
-                                color = Color(0xFFFFA500)
-                            )
-                        }
+            // Empty warning
+            if (enabledSet.size - rows.size > 0) {
+                item {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "⚠️ ${(enabledSet.size - rows.size)} channel(s) had no data — check API key or retry",
+                            color = Color(0xFFFFA500)
+                        )
                     }
                 }
             }
@@ -482,34 +504,42 @@ fun ChannelsScreen(
 }
 
 @Composable
-fun ChannelItem(category: Category, itemCount: Int) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+fun ChannelItem(category: Category, itemCount: Int, isSelected: Boolean = false) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .focusable(true)
+            .padding(12.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .background(Color(0xFF16213E), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),
-            contentAlignment = Alignment.Center
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("🎬", fontSize = 24.sp)
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(Color(0xFF16213E), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("🎬", fontSize = 24.sp)
+            }
+
+            Spacer(Modifier.width(16.dp))
+
+            Column {
+                Text(
+                    category.channelName(LocalContext.current),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text("$itemCount items • ${category.channelDescription()}", fontSize = 12.sp, color = Color.Gray)
+            }
+
+            Spacer(Modifier.weight(1f))
+            Text("✓", fontSize = 20.sp, color = Color(0xFF4CAF50))
         }
-
-        Spacer(Modifier.width(16.dp))
-
-        Column {
-            Text(
-                category.channelName(LocalContext.current),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-            Text("$itemCount items • ${category.channelDescription()}", fontSize = 12.sp, color = Color.Gray)
-        }
-
-        Spacer(Modifier.weight(1f))
-        Text("✓", fontSize = 20.sp, color = Color(0xFF4CAF50))
     }
 }
 
