@@ -22,7 +22,12 @@ jobs:
           cache: gradle
 
       - name: Build with Gradle
-        run: ./gradlew assembleDebug --no-daemon -Dorg.gradle.java.home=${{ env.JAVA_HOME }}
+        run: |
+          cat > init.gradle << 'EOF'
+          System.setProperty("http.agent", "Gradle")
+          System.setProperty("https.agent", "Gradle")
+          EOF
+          ./gradlew assembleDebug --no-daemon -Dorg.gradle.java.home=${{ env.JAVA_HOME }} --init-script init.gradle
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
