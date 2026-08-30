@@ -23,7 +23,7 @@ local.properties.bak
 *.war
 *.ear
 
-# Android Resources - Generated/Compiled
+# Android Resources - Generated/Compiled (except app icons)
 *.png
 *.jpg
 *.jpeg
@@ -46,3 +46,7 @@ local.properties.bak
 *.csv
 *.rst
 *.rst.txt
+
+# Re-allow app resource PNGs
+!app/src/main/res/drawable/*.png
+!app/src/main/res/mipmap-*/ic_launcher*.png
