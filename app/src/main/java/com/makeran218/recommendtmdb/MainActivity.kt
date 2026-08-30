@@ -7,30 +7,33 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.MainScope
-import androidx.work.WorkManager
-import androidx.work.WorkInfo
 
 class MainActivity : ComponentActivity() {
 
@@ -41,17 +44,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Check if this is a deep link from the launcher
         if (handleDeepLinkForward()) {
-            // Forwarded to Nuvio/Stremio, finish immediately
             finish()
             return
         }
 
-        val viewModel = TmdbViewModel(application)
+        val viewModel = ManifestViewModel(application)
 
         setContent {
-            TMDBTVTheme {
+            TVHomeTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -64,610 +65,689 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (handleDeepLinkForward()) {
-            finish()
-        }
+        if (handleDeepLinkForward()) finish()
     }
 
-    /**
-     * Handle deep link forwarding.
-     * When the launcher launches us with a Nuvio/Stremio URI, we forward it
-     * to the actual app and finish.
-     */
     private fun handleDeepLinkForward(): Boolean {
         val data = intent.data ?: return false
         val scheme = data.scheme ?: return false
-
-        return when (scheme) {
-            "nuvio" -> {
-                Log.d(TAG, "Forwarding Nuvio deep link: $data")
-                forwardToApp("nuvio", data)
-                true
-            }
-
-            "stremio" -> {
-                Log.d(TAG, "Forwarding Stremio deep link: $data")
-                forwardToApp("stremio", data)
-                true
-            }
-
-            else -> false
+        if (scheme in listOf("nuvio", "stremio")) {
+            Log.d(TAG, "Forwarding $scheme link: $data")
+            forwardToApp(scheme, data)
+            return true
         }
+        return false
     }
 
-    /**
-     * Forward a deep link URI to the appropriate app with explicit package targeting.
-     */
     private fun forwardToApp(scheme: String, uri: Uri) {
         val targetPackage = when (scheme) {
             "nuvio" -> "com.nuvio.tv"
             "stremio" -> "com.stremio.one"
             else -> null
         }
-
         val intent = Intent(Intent.ACTION_VIEW).apply {
             data = uri
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            // Explicitly target the app package
-            if (targetPackage != null) {
-                setPackage(targetPackage)
-            }
+            targetPackage?.let { setPackage(it) }
         }
-
         try {
             startActivity(intent)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch $scheme with explicit package, trying implicit: ${e.message}")
-            // Fallback: implicit intent (system will show chooser)
-            val fallback = Intent(Intent.ACTION_VIEW).apply {
-                data = uri
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            try {
-                startActivity(fallback)
-            } catch (e2: Exception) {
-                Log.e(TAG, "Fallback also failed: ${e2.message}")
-            }
+            Log.e(TAG, "Failed: ${e.message}")
         }
     }
 }
 
+// ==========================================
+// Main Screen
+// ==========================================
+
 @Composable
-fun MainScreen(viewModel: TmdbViewModel) {
-    val uiState by viewModel.uiState.collectAsState(initial = TmdbUiState.Success(emptyList()))
-    val isLoading by viewModel.isLoading.collectAsState()
+fun MainScreen(viewModel: ManifestViewModel) {
     val syncInProgress by viewModel.syncInProgress.collectAsState()
+    val manifestUrls by viewModel.manifestUrls.collectAsState(initial = emptyList())
+    val catalogs by viewModel.catalogs.collectAsState(initial = emptyMap())
     val settings by viewModel.settings.collectAsState()
 
-    // Show full-screen loading overlay during sync (blocks ALL interaction)
     if (syncInProgress) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(48.dp),
-                    strokeWidth = 4.dp
-                )
+                CircularProgressIndicator()
                 Spacer(Modifier.height(16.dp))
-                Text(
-                    "Syncing channels...",
-                    fontSize = 18.sp,
-                    color = Color.White
-                )
-                Text(
-                    "Please wait, do not close the app",
-                    fontSize = 14.sp,
-                    color = Color.Gray
-                )
+                Text("Syncing...", fontSize = 18.sp)
             }
         }
         return
     }
 
-    when {
-        // API key not set — always show setup
-        settings.apiKey.isBlank() || settings.apiKey == "YOUR_TMDB_API_KEY_HERE" -> {
-            SetupScreen(onApiKeySet = { key -> viewModel.setApiKey(key) })
+    if (manifestUrls.isEmpty()) {
+        SetupScreen(viewModel)
+    } else {
+        MainContent(viewModel, manifestUrls, catalogs, settings)
+    }
+}
+
+// ==========================================
+// Setup Screen - Simple Dialog
+// ==========================================
+
+@Composable
+fun SetupScreen(viewModel: ManifestViewModel) {
+    var showAddDialog by remember { mutableStateOf(false) }
+    var successMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(successMessage) {
+        successMessage?.let {
+            kotlinx.coroutines.delay(2000)
+            successMessage = null
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text("TV Home", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        Text("Add manifest URL to start", fontSize = 16.sp, color = Color.Gray)
+
+        Spacer(Modifier.height(32.dp))
+
+        // Big Add Button
+        Button(
+            onClick = { showAddDialog = true },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+        ) {
+            Icon(Icons.Default.Add, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Add Manifest URL", fontSize = 18.sp)
         }
 
-        uiState is TmdbUiState.Error -> {
-            val e = uiState as TmdbUiState.Error
-            ErrorScreen(e.message) { viewModel.retry() }
-        }
+        Spacer(Modifier.height(16.dp))
+        Text("https://.../manifest.json", fontSize = 12.sp, color = Color.Gray)
 
-        isLoading -> {
-            // Show cached data with a loading overlay during initial load
-            val state = uiState as? TmdbUiState.Success
-            if (state != null && state.rows.isNotEmpty()) {
-                ChannelsScreen(
-                    rows = state.rows,
-                    settings = settings,
-                    onApiKeyChange = { key -> viewModel.setApiKey(key) },
-                    onSync = { viewModel.syncChannels() },
-                    onRefresh = { viewModel.retry() },
-                    onProviderChange = { provider -> viewModel.setPlaybackProvider(provider) },
-                    onDisplayChange = { display -> viewModel.setDisplayType(display) },
-                    onPosterProviderChange = { provider -> viewModel.setPosterProvider(provider) },
-                    onItemsPerCategoryChange = { items -> viewModel.setItemsPerCategory(items) },
-                    isSyncing = true
+        // Success message
+        if (successMessage != null) {
+            Spacer(Modifier.height(16.dp))
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = Color(0xFF4CAF50),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text(
+                    successMessage!!,
+                    modifier = Modifier.padding(12.dp),
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
                 )
-            } else {
-                LoadingScreen()
-            }
-        }
-
-        else -> {
-            val state = uiState as TmdbUiState.Success
-            ChannelsScreen(
-                rows = state.rows,
-                settings = settings,
-                onApiKeyChange = { key -> viewModel.setApiKey(key) },
-                onSync = { viewModel.syncChannels() },
-                onRefresh = { viewModel.retry() },
-                onProviderChange = { provider -> viewModel.setPlaybackProvider(provider) },
-                onDisplayChange = { display -> viewModel.setDisplayType(display) },
-                onPosterProviderChange = { provider -> viewModel.setPosterProvider(provider) },
-                onItemsPerCategoryChange = { items -> viewModel.setItemsPerCategory(items) }
-            )
-        }
-    }
-}
-
-@Composable
-fun LoadingScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(16.dp))
-            Text("Loading...", color = MaterialTheme.colorScheme.onBackground)
-        }
-    }
-}
-
-@Composable
-fun ErrorScreen(message: String, onRetry: () -> Unit) {
-    Box(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(32.dp)
-        ) {
-            Text("⚠️", fontSize = 48.sp)
-            Spacer(Modifier.height(16.dp))
-            Text(message, color = Color.Red)
-            Spacer(Modifier.height(24.dp))
-            Button(
-                onClick = onRetry,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-            ) { Text("Retry", color = MaterialTheme.colorScheme.onBackground) }
-        }
-    }
-}
-
-@Composable
-fun SetupScreen(onApiKeySet: (String) -> Unit) {
-    var apiKey by remember { mutableStateOf("") }
-    var showSuccess by remember { mutableStateOf(false) }
-
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF1A1A2E)),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                "TMDB TV Home",
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Text("Set up your TMDB API key to create TV channels", fontSize = 18.sp, color = Color.White)
-            Text("1. Go to https://www.themoviedb.org/settings/api", fontSize = 14.sp, color = Color.Gray)
-            Text("2. Create an API key (it's free)", fontSize = 14.sp, color = Color.Gray)
-            Text("3. Paste your API key below", fontSize = 14.sp, color = Color.Gray)
-
-            OutlinedTextField(
-                value = apiKey,
-                onValueChange = { apiKey = it },
-                label = { Text("TMDB API Key", color = Color.Gray) },
-                modifier = Modifier.fillMaxWidth().height(60.dp),
-                singleLine = false
-            )
-
-            Button(
-                onClick = {
-                    if (apiKey.isNotBlank() && apiKey != "YOUR_TMDB_API_KEY_HERE") {
-                        onApiKeySet(apiKey)
-                        showSuccess = true
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Save", color = MaterialTheme.colorScheme.onPrimary) }
-
-            if (showSuccess) {
-                Text("API key saved! Syncing channels...", color = Color(0xFF4CAF50))
             }
         }
     }
+
+    // Add URL Dialog
+    if (showAddDialog) {
+        AddManifestDialog(
+            onDismiss = { showAddDialog = false },
+            onAdd = { url ->
+                viewModel.addManifestUrl(url)
+                showAddDialog = false
+                successMessage = "Manifest added! Catalogs will load automatically."
+            }
+        )
+    }
 }
 
 @Composable
-fun ChannelsScreen(
-    rows: List<CategoryRow>,
-    settings: AppPreferences.Settings,
-    onApiKeyChange: (String) -> Unit,
-    onSync: () -> Unit,
-    onRefresh: () -> Unit,
-    onProviderChange: (String) -> Unit,
-    onDisplayChange: (String) -> Unit,
-    onPosterProviderChange: (String) -> Unit = {},
-    onItemsPerCategoryChange: (Int) -> Unit = {},
-    isSyncing: Boolean = false
-) {
-    val enabledSet = settings.enabledCategories
-    var showApiKeyEdit by remember { mutableStateOf(false) }
-    var tempApiKey by remember { mutableStateOf(settings.apiKey) }
+fun AddManifestDialog(onDismiss: () -> Unit, onAdd: (String) -> Unit) {
+    var url by remember { mutableStateOf("") }
 
-
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = Color(0xFF1A1A2E)
-    ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight()
-                .padding(32.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 8.dp)
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surface
         ) {
-            // Header
-            item {
-                Row(
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text("Add Manifest URL", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("Manifest URL") },
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "TMDB TV Home",
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        if (isSyncing) {
-                            Spacer(Modifier.width(8.dp))
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                    IconButton(onClick = onRefresh) {
-                        Icon(Icons.Default.Refresh, "Sync", tint = Color.White)
-                    }
-                }
-            }
+                    singleLine = true
+                )
 
-            // Sync button
-            item {
-                Button(
-                    onClick = onSync,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                Spacer(Modifier.height(16.dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.Refresh, null, tint = MaterialTheme.colorScheme.onPrimary)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Sync Channels Now", color = MaterialTheme.colorScheme.onPrimary)
-                }
-            }
-
-            // Settings header
-            item {
-                Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            }
-
-            // Playback Provider
-            item {
-                Text(
-                    "Playback App",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val isNuvioSelected = settings.playbackProvider == "nuvio"
-                    OutlinedButton(
-                        onClick = { onProviderChange("nuvio") },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = if (isNuvioSelected) MaterialTheme.colorScheme.primary else Color.White
-                        )
-                    ) {
-                        Text("Nuvio", color = if (isNuvioSelected) MaterialTheme.colorScheme.primary else Color.White)
+                    TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                        Text("Cancel")
                     }
-
-                    val isStremioSelected = settings.playbackProvider == "stremio"
-                    OutlinedButton(
-                        onClick = { onProviderChange("stremio") },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = if (isStremioSelected) MaterialTheme.colorScheme.primary else Color.White
-                        )
-                    ) {
-                        Text(
-                            "Stremio",
-                            color = if (isStremioSelected) MaterialTheme.colorScheme.primary else Color.White
-                        )
-                    }
-                }
-            }
-
-            // Display Type
-            item {
-                Text(
-                    "Display Type",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val isPosterSelected = settings.displayType == "POSTER"
-                    OutlinedButton(
-                        onClick = { onDisplayChange("POSTER") },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = if (isPosterSelected) MaterialTheme.colorScheme.primary else Color.White
-                        )
-                    ) {
-                        Text("Poster", color = if (isPosterSelected) MaterialTheme.colorScheme.primary else Color.White)
-                    }
-
-                    val isWideSelected = settings.displayType == "WIDE"
-                    OutlinedButton(
-                        onClick = { onDisplayChange("WIDE") },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = if (isWideSelected) MaterialTheme.colorScheme.primary else Color.White
-                        )
-                    ) {
-                        Text("Wide", color = if (isWideSelected) MaterialTheme.colorScheme.primary else Color.White)
-                    }
-                }
-            }
-
-            // Poster Source
-            item {
-                Text(
-                    "Poster Source",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val isTmdbSelected = settings.posterProvider == "tmdb"
-                    OutlinedButton(
-                        onClick = { onPosterProviderChange("tmdb") },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = if (isTmdbSelected) MaterialTheme.colorScheme.primary else Color.White
-                        )
-                    ) {
-                        Text("TMDB", color = if (isTmdbSelected) MaterialTheme.colorScheme.primary else Color.White)
-                    }
-
-                    val isBttrSelected = settings.posterProvider == "bttr"
-                    OutlinedButton(
-                        onClick = { onPosterProviderChange("bttr") },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = if (isBttrSelected) MaterialTheme.colorScheme.primary else Color.White
-                        )
-                    ) {
-                        Text(
-                            "Better Posters",
-                            color = if (isBttrSelected) MaterialTheme.colorScheme.primary else Color.White
-                        )
-                    }
-                }
-            }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "⚠ ",
-                        fontSize = 14.sp,
-                        color = Color(0xFFFFA500)
-                    )
-                    Text(
-                        "Tap \"Sync Channels Now\" to apply poster changes",
-                        fontSize = 12.sp,
-                        color = Color(0xFFFFA500)
-                    )
-                }
-            }
-
-            // Items Per Category
-            item {
-                Text(
-                    "Items Per Category",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    AppPreferences.ITEMS_PER_CATEGORY_OPTIONS.forEach { count ->
-                        val isSelected = settings.itemsPerCategory == count
-                        OutlinedButton(
-                            onClick = { onItemsPerCategoryChange(count) },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.White
-                            )
-                        ) {
-                            Text("$count", color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White)
-                        }
-                    }
-                }
-            }
-
-            // API Key
-            item {
-                Text(
-                    "API Key",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-            item {
-                OutlinedTextField(
-                    value = settings.apiKey,
-                    onValueChange = {},
-                    label = { Text("TMDB API Key", color = Color.Gray) },
-                    modifier = Modifier.fillMaxWidth(),
-                    readOnly = !showApiKeyEdit,
-                    trailingIcon = {
-                        IconButton(onClick = {
-                            if (showApiKeyEdit) {
-                                if (tempApiKey.isNotBlank() && tempApiKey != "YOUR_TMDB_API_KEY_HERE") {
-                                    onApiKeyChange(tempApiKey)
-                                }
-                                showApiKeyEdit = false
-                            } else {
-                                tempApiKey = settings.apiKey
-                                showApiKeyEdit = true
+                    Button(
+                        onClick = {
+                            if (url.isNotBlank()) {
+                                onAdd(url)
                             }
-                        }) {
-                            Icon(
-                                imageVector = if (showApiKeyEdit) Icons.Default.Check else Icons.Default.Edit,
-                                contentDescription = if (showApiKeyEdit) "Save" else "Edit",
-                                tint = Color.White
-                            )
-                        }
+                        },
+                        enabled = url.isNotBlank(),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Add")
                     }
-                )
-            }
-            if (showApiKeyEdit) {
-                item {
-                    OutlinedTextField(
-                        value = tempApiKey,
-                        onValueChange = { tempApiKey = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = false,
-                        maxLines = 3
-                    )
                 }
             }
+        }
+    }
+}
 
-            // Channel list header
-            item {
-                val itemCount = rows.size
-                val emptyCount = enabledSet.size - itemCount
-                Text(
-                    "TV Channels ($itemCount / ${enabledSet.size})",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
+// ==========================================
+// Manage Manifests Dialog
+// ==========================================
+
+@Composable
+fun ManageManifestsDialog(
+    manifestUrls: List<String>,
+    onDismiss: () -> Unit,
+    onAdd: (String) -> Unit,
+    onRemove: (String) -> Unit
+) {
+    var addUrl by remember { mutableStateOf("") }
+    var showAddField by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(modifier = Modifier.padding(24.dp).fillMaxWidth()) {
+                Text("Manage Manifests", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(16.dp))
+
+                // Add URL field
+                if (showAddField) {
+                    OutlinedTextField(
+                        value = addUrl,
+                        onValueChange = { addUrl = it },
+                        label = { Text("Manifest URL") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("https://.../manifest.json") }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        TextButton(onClick = { showAddField = false }) {
+                            Text("Cancel")
+                        }
+                        Button(
+                            onClick = {
+                                if (addUrl.isNotBlank()) {
+                                    onAdd(addUrl)
+                                    addUrl = ""
+                                    showAddField = false
+                                }
+                            },
+                            enabled = addUrl.isNotBlank()
+                        ) {
+                            Text("Add")
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                } else {
+                    Button(
+                        onClick = { showAddField = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Add Manifest URL")
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
+
+                // List of manifests
+                if (manifestUrls.isEmpty()) {
+                    Text("No manifests added", fontSize = 14.sp, color = Color.Gray)
+                } else {
+                    Text("${manifestUrls.size} manifest(s)", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(8.dp))
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 300.dp)
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant,
+                                shape = MaterialTheme.shapes.small
+                            )
+                            .padding(8.dp)
+                    ) {
+                        manifestUrls.forEach { url ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = url,
+                                    modifier = Modifier.weight(1f),
+                                    fontSize = 11.sp,
+                                    color = Color.White,
+                                    maxLines = 2
+                                )
+                                TextButton(
+                                    onClick = { onRemove(url) },
+                                    modifier = Modifier.padding(start = 8.dp)
+                                ) {
+                                    Icon(Icons.Default.Delete, null, tint = Color.Red, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                // Close button
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Close")
+                }
             }
+        }
+    }
+}
 
-            // Channel items
-            items(rows) { row ->
-                ChannelItem(row.category, row.items.size)
+// ==========================================
+// Main Content - Simple List
+// ==========================================
+
+@Composable
+fun MainContent(
+    viewModel: ManifestViewModel,
+    manifestUrls: List<String>,
+    catalogs: Map<String, List<CatalogEntry>>,
+    settings: AppPreferences.Settings
+) {
+    var showManageDialog by remember { mutableStateOf(false) }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(vertical = 8.dp)
+    ) {
+        // Header
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("TV Home", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text("${manifestUrls.size} manifest(s)", fontSize = 14.sp, color = Color.Gray)
             }
+        }
 
-            // Empty warning
-            if (enabledSet.size - rows.size > 0) {
+        // Manage manifests button
+        item {
+            Button(
+                onClick = { showManageDialog = true },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Settings, null)
+                Spacer(Modifier.width(8.dp))
+                Text("Manage Manifests")
+            }
+        }
+
+        // Refresh button
+        item {
+            Button(
+                onClick = { viewModel.refreshCatalogs() },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Refresh, null)
+                Spacer(Modifier.width(8.dp))
+                Text("Refresh Catalogs")
+            }
+        }
+
+        // Catalogs header
+        item {
+            val total = catalogs.values.sumOf { it.size }
+            val enabled = catalogs.values.sumOf { it.count { c -> c.enabled } }
+            Text("Catalogs ($enabled / $total)", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+
+        // Catalog items
+        catalogs.forEach { (manifestUrl, catalogList) ->
+            catalogList.forEach { catalog ->
                 item {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            "⚠️ ${(enabledSet.size - rows.size)} channel(s) had no data — check API key or retry",
-                            color = Color(0xFFFFA500)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (catalog.catalogType == "series") Icons.Default.VideoLibrary else Icons.Default.PlayCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(catalog.catalogName, fontWeight = FontWeight.Bold)
+                            Text(catalog.catalogType.uppercase(), fontSize = 12.sp, color = Color.Gray)
+                        }
+                        Switch(
+                            checked = catalog.enabled,
+                            onCheckedChange = { enabled ->
+                                viewModel.toggleCatalog(
+                                    "$manifestUrl::${catalog.catalogType}::${catalog.catalogId}",
+                                    enabled
+                                )
+                            }
                         )
                     }
                 }
             }
         }
-    }
-}
 
-@Composable
-fun ChannelItem(category: Category, itemCount: Int, isSelected: Boolean = false) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp)
-            .focusable(true)
-            .padding(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(Color(0xFF16213E), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center
+        // Sync button
+        item {
+            Button(
+                onClick = { viewModel.syncChannels() },
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text("🎬", fontSize = 24.sp)
+                Icon(Icons.Default.Refresh, null)
+                Spacer(Modifier.width(8.dp))
+                Text("Sync Channels Now")
             }
+        }
 
-            Spacer(Modifier.width(16.dp))
+        // Settings
+        item {
+            Text("Settings", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
 
-            Column {
-                Text(
-                    category.channelName(LocalContext.current),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text("$itemCount items • ${category.channelDescription()}", fontSize = 12.sp, color = Color.Gray)
+        // Playback provider
+        item {
+            Text(
+                "Playback App",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val selected = settings.playbackProvider
+                for ((key, label) in listOf("nuvio" to "Nuvio", "stremio" to "Stremio")) {
+                    OutlinedButton(
+                        onClick = { viewModel.setPlaybackProvider(key) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (selected == key) MaterialTheme.colorScheme.primary else Color.White
+                        )
+                    ) {
+                        Text(label, color = if (selected == key) MaterialTheme.colorScheme.primary else Color.White)
+                    }
+                }
             }
+        }
 
-            Spacer(Modifier.weight(1f))
-            Text("✓", fontSize = 20.sp, color = Color(0xFF4CAF50))
+        // Display type
+        item {
+            Text(
+                "Display Type",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val selected = settings.displayType
+                for ((key, label) in listOf("POSTER" to "Poster", "WIDE" to "Wide")) {
+                    OutlinedButton(
+                        onClick = { viewModel.setDisplayType(key) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (selected == key) MaterialTheme.colorScheme.primary else Color.White
+                        )
+                    ) {
+                        Text(label, color = if (selected == key) MaterialTheme.colorScheme.primary else Color.White)
+                    }
+                }
+            }
+        }
+
+        // Warning if no catalogs enabled
+        item {
+            val total = catalogs.values.sumOf { it.size }
+            val enabled = catalogs.values.sumOf { it.count { c -> c.enabled } }
+            if (enabled == 0 && total > 0) {
+                Text("⚠ Enable at least one catalog", color = Color(0xFFFFA500), fontSize = 12.sp)
+            }
         }
     }
+
+    // Manage manifests dialog
+    if (showManageDialog) {
+        ManageManifestsDialog(
+            manifestUrls = manifestUrls,
+            onDismiss = { showManageDialog = false },
+            onAdd = { url ->
+                viewModel.addManifestUrl(url)
+            },
+            onRemove = { url ->
+                viewModel.removeManifestUrl(url)
+            }
+        )
+    }
 }
 
+// ==========================================
+// ViewModel
+// ==========================================
+
+class ManifestViewModel(app: android.app.Application) : androidx.lifecycle.AndroidViewModel(app) {
+
+    private val context = app.applicationContext
+
+    private val _syncInProgress = MutableStateFlow(false)
+    val syncInProgress: StateFlow<Boolean> = _syncInProgress
+
+    private val _settings = MutableStateFlow(AppPreferences.Settings("nuvio", "POSTER"))
+    val settings: StateFlow<AppPreferences.Settings> = _settings
+
+    private val _manifestUrls = MutableStateFlow<List<String>>(emptyList())
+    val manifestUrls: StateFlow<List<String>> = _manifestUrls
+
+    private val _catalogs = MutableStateFlow<Map<String, List<CatalogEntry>>>(emptyMap())
+    val catalogs: StateFlow<Map<String, List<CatalogEntry>>> = _catalogs
+
+    init {
+        // Each collector must run in its own coroutine — collect() blocks
+        MainScope().launch {
+            AppPreferences.readPreferences(context).collect { s ->
+                _settings.value = s
+                DeepLinks.setProvider(DeepLinks.getProvider(s.playbackProvider))
+            }
+        }
+        MainScope().launch {
+            ManifestRepository.readManifestUrls(context).collect { urls ->
+                _manifestUrls.value = urls
+                if (urls.isNotEmpty() && _catalogs.value.isEmpty()) {
+                    loadCachedCatalogs()
+                }
+            }
+        }
+        MainScope().launch {
+            ManifestRepository.readEnabledCatalogs(context).collect { enabled ->
+                val current = _catalogs.value
+                val updated = current.mapValues { (manifestUrl, catalogList) ->
+                    catalogList.map { c ->
+                        c.copy(enabled = enabled.contains("$manifestUrl::${c.catalogType}::${c.catalogId}"))
+                    }
+                }
+                _catalogs.value = updated
+            }
+        }
+    }
+
+    private suspend fun loadCachedCatalogs() {
+        try {
+            val urls = ManifestRepository.readManifestUrls(context).first()
+            val enabled = ManifestRepository.readEnabledCatalogs(context).first()
+            val newCatalogs = mutableMapOf<String, List<CatalogEntry>>()
+
+            for (manifestUrl in urls) {
+                val cached = ManifestRepository.loadCachedCatalogs(context, manifestUrl)
+                if (cached != null) {
+                    newCatalogs[manifestUrl] = cached.map { c ->
+                        c.copy(enabled = enabled.contains("$manifestUrl::${c.catalogType}::${c.catalogId}"))
+                    }
+                }
+            }
+
+            if (newCatalogs.isNotEmpty()) {
+                _catalogs.value = newCatalogs
+            }
+        } catch (e: Exception) {
+            Log.e("VM", "Failed to load cached catalogs", e)
+        }
+    }
+
+    fun addManifestUrl(url: String) {
+        MainScope().launch {
+            val trimmed = url.trim()
+            // Auto-add https:// if missing
+            val cleanUrl = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+                trimmed
+            } else {
+                "https://$trimmed"
+            }
+            Log.d("VM", "addManifestUrl: $cleanUrl")
+            val saved = ManifestRepository.addManifestUrl(context, cleanUrl)
+            // Always update state and load catalogs, whether new or existing URL
+            val allUrls = ManifestRepository.readManifestUrls(context).first()
+            _manifestUrls.value = allUrls
+            Log.d("VM", "addManifestUrl: saved=$saved, total URLs=${allUrls.size}, loading catalogs")
+            // Automatically fetch catalogs
+            refreshCatalogs()
+        }
+    }
+
+    fun removeManifestUrl(url: String) {
+        MainScope().launch {
+            ManifestRepository.removeManifestUrl(context, url)
+            _catalogs.value = _catalogs.value.filterKeys { it != url }
+        }
+    }
+
+    fun refreshCatalogs() {
+        MainScope().launch {
+            try {
+                val urls = ManifestRepository.readManifestUrls(context).first()
+                val enabled = ManifestRepository.readEnabledCatalogs(context).first()
+                val newCatalogs = mutableMapOf<String, List<CatalogEntry>>()
+
+                for (manifestUrl in urls) {
+                    // Skip invalid URLs
+                    if (!manifestUrl.startsWith("http://") && !manifestUrl.startsWith("https://")) {
+                        Log.w("VM", "Skipping invalid URL: $manifestUrl")
+                        continue
+                    }
+                    try {
+                        val cached = ManifestRepository.loadCachedCatalogs(context, manifestUrl)
+                        if (cached != null) {
+                            newCatalogs[manifestUrl] = cached.map { c ->
+                                c.copy(enabled = enabled.contains("$manifestUrl::${c.catalogType}::${c.catalogId}"))
+                            }
+                            continue
+                        }
+
+                        val manifest = XperienceClient.fetchManifest(manifestUrl)
+                        val entries = manifest.catalogs
+                            .filter {
+                                !it.id.startsWith("xperience.search") &&
+                                        it.extraRequired?.contains("genre") != true
+                            }
+                            .map { c ->
+                                CatalogEntry(c.id, c.name, c.type, enabled.contains("$manifestUrl::${c.type}::${c.id}"))
+                            }
+
+                        ManifestRepository.cacheManifest(context, manifestUrl, entries)
+                        newCatalogs[manifestUrl] = entries
+                        Log.d("VM", "Loaded ${entries.size} catalogs")
+                    } catch (e: Exception) {
+                        Log.e("VM", "Failed to fetch manifest: $manifestUrl", e)
+                    }
+                }
+
+                if (newCatalogs.isNotEmpty()) {
+                    _catalogs.value = newCatalogs
+                }
+            } catch (e: Exception) {
+                Log.e("VM", "Refresh failed", e)
+            }
+        }
+    }
+
+    fun toggleCatalog(key: String, enabled: Boolean) {
+        MainScope().launch {
+            ManifestRepository.toggleCatalog(context, key, enabled)
+        }
+    }
+
+    fun syncChannels() {
+        MainScope().launch {
+            _syncInProgress.value = true
+            Log.d("VM", "Sync started")
+            try {
+                SyncScheduler.triggerSync(context)
+                WorkManager.getInstance(context)
+                    .getWorkInfosForUniqueWorkFlow(SyncWorker.WORK_NAME)
+                    .first { infos ->
+                        infos.any { it.state == WorkInfo.State.SUCCEEDED || it.state == WorkInfo.State.FAILED }
+                    }
+                Log.d("VM", "Sync done")
+                refreshCatalogs()
+            } catch (e: Exception) {
+                Log.e("VM", "Sync failed", e)
+            } finally {
+                _syncInProgress.value = false
+            }
+        }
+    }
+
+    fun setPlaybackProvider(provider: String) {
+        MainScope().launch { AppPreferences.setPlaybackProvider(context, provider) }
+    }
+
+    fun setDisplayType(display: String) {
+        MainScope().launch { AppPreferences.setDisplayType(context, display) }
+    }
+}
+
+// ==========================================
+// Theme
+// ==========================================
+
 @Composable
-fun TMDBTVTheme(content: @Composable () -> Unit) {
+fun TVHomeTheme(content: @Composable () -> Unit) {
     val colors = darkColorScheme(
         primary = Color(0xFF4D50FF),
         onPrimary = Color.White,
@@ -676,231 +756,5 @@ fun TMDBTVTheme(content: @Composable () -> Unit) {
         surface = Color(0xFF16213E),
         onSurface = Color.White
     )
-
     MaterialTheme(colorScheme = colors, content = content)
 }
-
-class TmdbViewModel(application: android.app.Application) : androidx.lifecycle.AndroidViewModel(application) {
-
-    private val _uiState = MutableStateFlow<TmdbUiState>(TmdbUiState.Success(emptyList()))
-    val uiState: StateFlow<TmdbUiState> = _uiState
-
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading
-
-    private val _syncInProgress = MutableStateFlow(false)
-    val syncInProgress: StateFlow<Boolean> = _syncInProgress
-
-    private val _settings = MutableStateFlow(AppPreferences.Settings(emptySet(), 0, "", "nuvio", "POSTER", "tmdb", 20))
-    val settings: StateFlow<AppPreferences.Settings> = _settings
-
-    private val context = application.applicationContext
-
-    init {
-        MainScope().launch {
-            AppPreferences.readPreferences(context).collect { s ->
-                _settings.value = s
-                DeepLinks.setProvider(DeepLinks.getProvider(s.playbackProvider))
-                // Load cached data on startup so the UI isn't blank
-                if (s.hasApiKey()) {
-                    loadCachedData()
-                }
-            }
-        }
-    }
-
-    private suspend fun loadCachedData() {
-        val cached = AppPreferences.loadCachedItems(context)
-        if (cached != null) {
-            _uiState.value = TmdbUiState.Success(cached)
-        }
-    }
-
-    fun setApiKey(key: String) {
-        MainScope().launch {
-            AppPreferences.setApiKey(context, key)
-            loadCategories()
-        }
-    }
-
-    fun setPlaybackProvider(provider: String) {
-        MainScope().launch {
-            AppPreferences.setPlaybackProvider(context, provider)
-        }
-    }
-
-    fun setDisplayType(displayType: String) {
-        MainScope().launch {
-            AppPreferences.setDisplayType(context, displayType)
-        }
-    }
-
-    fun setPosterProvider(posterProvider: String) {
-        MainScope().launch {
-            AppPreferences.setPosterProvider(context, posterProvider)
-        }
-    }
-
-    fun setItemsPerCategory(itemsPerCategory: Int) {
-        MainScope().launch {
-            AppPreferences.setItemsPerCategory(context, itemsPerCategory)
-        }
-    }
-
-    fun syncChannels() {
-        MainScope().launch {
-            // Block UI during sync
-            _syncInProgress.value = true
-            Log.d("TmdbViewModel", "Sync started — blocking UI...")
-
-            try {
-                // 1. Trigger SyncWorker to fetch all data (including IMDb IDs for bttr.cc)
-                SyncScheduler.triggerSync(context)
-                Log.d("TmdbViewModel", "Sync triggered — waiting for completion...")
-
-                // 2. Wait for SyncWorker to complete using WorkManager
-                WorkManager.getInstance(context)
-                    .getWorkInfosForUniqueWorkFlow(SyncWorker.WORK_NAME)
-                    .first { workInfoList ->
-                        // Check if worker has finished (success or failure)
-                        workInfoList.any {
-                            it.state == WorkInfo.State.SUCCEEDED ||
-                                    it.state == WorkInfo.State.FAILED
-                        }
-                    }
-
-                Log.d("TmdbViewModel", "SyncWorker completed — loading fresh cache")
-
-                // 3. NOW load from cache (which has fresh data from SyncWorker)
-                //    This ensures UI always shows the latest synced data
-                loadCachedData()
-            } finally {
-                // Unblock UI
-                _syncInProgress.value = false
-                Log.d("TmdbViewModel", "Sync finished — UI unblocked")
-            }
-        }
-    }
-
-    suspend fun loadCategories(onLoaded: ((List<CategoryRow>) -> Unit)? = null) {
-        val settings = AppPreferences.readPreferences(context).first()
-        val apiKey = settings.apiKey
-
-        if (!settings.hasApiKey()) {
-            _uiState.value = TmdbUiState.Error("TMDB API key not configured")
-            return
-        }
-
-        _isLoading.value = true
-
-        try {
-            val rows = mutableListOf<CategoryRow>()
-
-            for (categoryKey in settings.enabledCategories) {
-                val category = Category.fromKey(categoryKey) ?: continue
-                val items = fetchCategoryItems(apiKey, category, settings.itemsPerCategory)
-                val count = items.size
-                android.util.Log.d(
-                    "TmdbViewModel",
-                    "Category $categoryKey: ${count} items (enabled=${settings.enabledCategories.contains(categoryKey)}, requested=${settings.itemsPerCategory})"
-                )
-                if (items.isNotEmpty()) {
-                    rows.add(CategoryRow(category, items))
-                }
-            }
-
-            _uiState.value = TmdbUiState.Success(rows)
-            onLoaded?.invoke(rows)
-        } catch (e: Exception) {
-            _uiState.value = TmdbUiState.Error(e.message ?: "Unknown error")
-        } finally {
-            _isLoading.value = false
-        }
-    }
-
-    private suspend fun fetchCategoryItems(
-        apiKey: String,
-        category: Category,
-        itemsPerCategory: Int
-    ): List<TmdbItem> {
-        return try {
-            val totalPages = TmdbClient.pagesNeeded(itemsPerCategory)
-            val shouldFetchMultiplePages = totalPages > 1
-
-            val results = if (shouldFetchMultiplePages) {
-                // Fetch multiple pages and combine
-                TmdbClient.fetchMultiplePages(
-                    { page -> fetchSinglePage(apiKey, category.key, page) },
-                    totalPages
-                )
-            } else {
-                fetchSinglePage(apiKey, category.key, 1).results
-            }
-
-            android.util.Log.d(
-                "TmdbViewModel",
-                "Category ${category.key}: fetched ${results.size} items from $totalPages page(s)"
-            )
-
-            // Filter out unreleased items (trending can include upcoming titles)
-            // Discover endpoints already filter server-side, but this is a safety net
-            val filteredResults = results.filter { it.isReleased }.take(itemsPerCategory)
-            if (filteredResults.size < itemsPerCategory) {
-                android.util.Log.w(
-                    "TmdbViewModel",
-                    "Category ${category.key}: only ${filteredResults.size} items available (requested $itemsPerCategory)"
-                )
-            }
-            filteredResults
-        } catch (e: Exception) {
-            android.util.Log.w("TmdbViewModel", "Failed to fetch ${category.key}: ${e.message}")
-            emptyList()
-        }
-    }
-
-    /**
-     * Fetch a single page for a category.
-     * Used internally for multi-page fetching.
-     */
-    private suspend fun fetchSinglePage(apiKey: String, categoryKey: String, page: Int): TmdbListResponse {
-        return try {
-            val response = when (categoryKey) {
-                Category.TRENDING_MOVIES.key -> TmdbClient.api.getTrending("movie", "week", apiKey, page)
-                Category.TRENDING_TV.key -> TmdbClient.api.getTrending("tv", "week", apiKey, page)
-                Category.LATEST_MOVIES.key -> TmdbClient.api.discoverLatestMovies(apiKey, page = page)
-                Category.LATEST_TV.key -> TmdbClient.api.discoverTvShows(apiKey, "first_air_date.desc", page = page)
-                Category.POPULAR_MOVIES.key -> TmdbClient.api.discoverMovies(apiKey, "popularity.desc", page = page)
-                Category.POPULAR_TV.key -> TmdbClient.api.discoverTvShows(apiKey, "popularity.desc", page = page)
-                Category.NETFLIX_POPULAR_MOVIES.key -> TmdbClient.api.discoverNetflixPopularMovies(apiKey, page = page)
-                Category.NETFLIX_POPULAR_TV.key -> TmdbClient.api.discoverNetflixPopularTv(apiKey, page = page)
-                Category.NETFLIX_NEW_MOVIES.key -> TmdbClient.api.discoverNetflixNewMovies(apiKey, page = page)
-                Category.NETFLIX_NEW_TV.key -> TmdbClient.api.discoverNetflixNewTv(apiKey, page = page)
-                else -> TmdbListResponse(0, 0, 0, emptyList())
-            }
-            if (page > 1) {
-                android.util.Log.d(
-                    "TmdbViewModel",
-                    "Fetched page $page of $categoryKey (${response.results.size} items)"
-                )
-            }
-            response
-        } catch (e: Exception) {
-            android.util.Log.w("TmdbViewModel", "Failed to fetch page $page of $categoryKey", e)
-            TmdbListResponse(page, 0, 0, emptyList())
-        }
-    }
-
-    fun retry() {
-        MainScope().launch { loadCategories() }
-    }
-
-    /** Returns cached data timestamp for the "last updated" indicator. */
-    fun getCachedTime(): Flow<Long> = AppPreferences.getCachedTime(context)
-}
-
-sealed interface TmdbUiState {
-    data class Success(val rows: List<CategoryRow>) : TmdbUiState
-    data class Error(val message: String) : TmdbUiState
-}
-
-data class CategoryRow(val category: Category, val items: List<TmdbItem>)

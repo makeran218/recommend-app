@@ -14,7 +14,7 @@ object SyncScheduler {
             1, TimeUnit.HOURS
         )
             .setInitialDelay(1, TimeUnit.MINUTES)
-            .addTag("tmdb_sync")
+            .addTag("tv_home_sync")
             .build()
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
@@ -26,7 +26,7 @@ object SyncScheduler {
 
     fun triggerSync(context: Context) {
         val workRequest = androidx.work.OneTimeWorkRequestBuilder<SyncWorker>()
-            .addTag("tmdb_sync_immediate")
+            .addTag("tv_home_sync_immediate")
             .build()
 
         WorkManager.getInstance(context).enqueueUniqueWork(

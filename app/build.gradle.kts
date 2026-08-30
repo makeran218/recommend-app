@@ -56,9 +56,7 @@ dependencies {
     implementation(libs.androidx.tvprovider)
 
     // Networking
-    implementation(libs.retrofit)
-    implementation(libs.retrofit.gson)
-    implementation(libs.okhttp.logging)
+    implementation(libs.okhttp)
     implementation(libs.gson)
 
     // Background sync

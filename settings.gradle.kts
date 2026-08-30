@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "TMDB TV Home"
+rootProject.name = "Xperience TV Home"
 include(":app")

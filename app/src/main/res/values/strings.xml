@@ -1,22 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- TMDB API Key - REPLACE WITH YOUR OWN KEY -->
-    <string name="tmdb_api_key">YOUR_TMDB_API_KEY_HERE</string>
-    <string name="app_name">Recommended App</string>
-
-    <!-- Channel categories -->
-    <string name="channel_trending_movies">Trending Movies</string>
-    <string name="channel_trending_tv">Trending TV Shows</string>
-    <string name="channel_latest_movies">Latest Movies</string>
-    <string name="channel_latest_tv">Latest TV Shows</string>
-    <string name="channel_popular_movies">Popular Movies</string>
-    <string name="channel_popular_tv">Popular TV Shows</string>
-    <string name="channel_netflix_popular_movies">Netflix Popular Movies</string>
-    <string name="channel_netflix_popular_tv">Netflix Popular TV Shows</string>
-    <string name="channel_netflix_new_movies">Netflix New Movies</string>
-    <string name="channel_netflix_new_tv">Netflix New TV Shows</string>
+    <string name="app_name">TV Home</string>
 
     <!-- Content descriptions -->
     <string name="content_description_movie_poster">Movie poster</string>
     <string name="content_description_tv_poster">TV Show poster</string>
+
+    <!-- Setup screen -->
+    <string name="setup_title">TV Home</string>
+    <string name="setup_subtitle">Add manifest URLs to create TV channels</string>
+    <string name="setup_hint">Enter manifest URL</string>
+    <string name="setup_add">Add Manifest</string>
+    <string name="setup_example">Example: https://xperience-app.com/manifest/.../manifest.json</string>
+    <string name="setup_adding">Adding...</string>
+
+    <!-- Catalogs screen -->
+    <string name="catalogs_title">Available Catalogs</string>
+    <string name="catalogs_subtitle">Select catalogs to sync as TV channels</string>
+    <string name="catalogs_empty">No catalogs available. Add a manifest URL above.</string>
+    <string name="catalogs_toggle_on">Enable</string>
+    <string name="catalogs_toggle_off">Disable</string>
+    <string name="catalogs_loading">Loading catalogs...</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_playback">Playback App</string>
+    <string name="settings_display">Display Type</string>
+    <string name="settings_poster">Poster</string>
+    <string name="settings_wide">Wide</string>
+
+    <!-- Actions -->
+    <string name="action_sync">Sync Channels Now</string>
+    <string name="action_syncing">Syncing...</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_remove">Remove</string>
+
+    <!-- Channel list -->
+    <string name="channels_title">TV Channels (%1$d / %2$d)</string>
+    <string name="channels_no_data">No channels synced yet. Enable catalogs and press Sync.</string>
+
+    <!-- Status messages -->
+    <string name="status_syncing">Syncing channels... Please wait</string>
+    <string name="status_sync_complete">Sync complete!</string>
+    <string name="status_sync_failed">Sync failed. Tap to retry.</string>
+    <string name="status_no_catalogs">Enable at least one catalog to create channels.</string>
 </resources>

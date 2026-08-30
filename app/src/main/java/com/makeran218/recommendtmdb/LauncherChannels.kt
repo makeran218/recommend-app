@@ -34,19 +34,15 @@ class LauncherChannels(private val context: Context) {
          * Sync all channels synchronously — waits for ALL items to be inserted
          * before returning. This prevents race conditions where the launcher
          * reads channels before all items are inserted.
-         *
-         * IMPORTANT: This is a suspend function. Callers must await completion
-         * before proceeding (e.g., before saving cache or updating UI).
          */
         suspend fun syncAll(
             context: Context,
-            itemsByCategory: Map<String, List<TmdbItem>>,
-            displayType: DisplayType,
-            posterProvider: String
+            itemsByCatalog: Map<String, List<ChannelItem>>,
+            displayType: DisplayType
         ) {
             val launcher = LauncherChannels(context)
             try {
-                launcher.syncChannels(itemsByCategory, displayType, posterProvider)
+                launcher.syncChannels(itemsByCatalog, displayType)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to sync channels", e)
             }
@@ -54,30 +50,28 @@ class LauncherChannels(private val context: Context) {
     }
 
     /**
-     * Delete all existing channels first, then insert all items for all categories.
-     * This is a suspend function that waits for ALL inserts to complete before returning.
+     * Delete all existing channels first, then insert all items for all catalogs.
      */
     private suspend fun syncChannels(
-        itemsByCategory: Map<String, List<TmdbItem>>,
-        displayType: DisplayType,
-        posterProvider: String
+        itemsByCatalog: Map<String, List<ChannelItem>>,
+        displayType: DisplayType
     ) {
         val mutex = Mutex()
         var totalInserted = 0
-        val totalItems = itemsByCategory.values.sumOf { it.size }
+        val totalItems = itemsByCatalog.values.sumOf { it.size }
 
-        Log.d(TAG, "Starting channel sync: ${itemsByCategory.size} categories, $totalItems total items")
+        Log.d(TAG, "Starting channel sync: ${itemsByCatalog.size} catalogs, $totalItems total items")
 
         // Delete all existing channels first
         deleteAllChannels()
 
-        for ((categoryKey, items) in itemsByCategory) {
-            val category = Category.values().find { it.key == categoryKey } ?: continue
+        for ((catalogKey, items) in itemsByCatalog) {
+            val catalogInfo = parseCatalogKey(context, catalogKey) ?: continue
             if (items.isEmpty()) continue
 
-            Log.d(TAG, "Syncing category: $categoryKey (${items.size} items)")
+            Log.d(TAG, "Syncing catalog: ${catalogInfo.catalogName} (${items.size} items)")
 
-            syncCategory(category, items, displayType, posterProvider, mutex) {
+            syncCatalog(context, catalogInfo, items, displayType, mutex) {
                 totalInserted++
                 if (totalInserted % 10 == 0 || totalInserted == totalItems) {
                     Log.d(TAG, "Inserted $totalInserted / $totalItems items...")
@@ -85,36 +79,63 @@ class LauncherChannels(private val context: Context) {
             }
         }
 
-        Log.d(TAG, "Channels synced: ${itemsByCategory.size} categories, $totalInserted items inserted")
+        Log.d(TAG, "Channels synced: ${itemsByCatalog.size} catalogs, $totalInserted items inserted")
+    }
+
+    private data class CatalogInfo(
+        val catalogId: String,
+        val catalogName: String,
+        val catalogType: String
+    )
+
+    private suspend fun parseCatalogKey(context: Context, catalogKey: String): CatalogInfo? {
+        val parts = catalogKey.split("::", limit = 3)
+        if (parts.size != 3) return null
+
+        val manifestUrl = parts[0]
+        val catalogType = parts[1]
+        val catalogId = parts[2]
+
+        // Try to get catalog name from cache
+        val cachedCatalogs = try {
+            ManifestRepository.loadCachedCatalogs(context, manifestUrl)
+        } catch (e: Exception) {
+            null
+        }
+
+        val catalogInfo = cachedCatalogs?.find { it.catalogId == catalogId }
+
+        return CatalogInfo(
+            catalogId = catalogId,
+            catalogName = catalogInfo?.catalogName ?: catalogId,
+            catalogType = catalogInfo?.catalogType ?: catalogType
+        )
     }
 
     /**
-     * Sync a single category's items to the launcher.
-     * Uses a mutex to ensure inserts are sequential and properly committed.
+     * Sync a single catalog's items to the launcher.
      */
-    private suspend fun syncCategory(
-        category: Category,
-        items: List<TmdbItem>,
+    private suspend fun syncCatalog(
+        context: Context,
+        catalogInfo: CatalogInfo,
+        items: List<ChannelItem>,
         displayType: DisplayType,
-        posterProvider: String,
         mutex: Mutex,
         onProgress: () -> Unit
     ) {
-        val channelId = createChannel(category)
-        Log.d(TAG, "Created channel: ${category.channelName(context)} (ID: $channelId)")
+        val channelId = createChannel(catalogInfo)
 
         for (item in items) {
             mutex.withLock {
-                createProgram(channelId, category, item, displayType, posterProvider)
+                createProgram(channelId, catalogInfo, item, displayType)
             }
             onProgress()
         }
 
-        Log.d(TAG, "Completed category: ${category.channelName(context)} (${items.size} items)")
+        Log.d(TAG, "Completed catalog: ${catalogInfo.catalogName} (${items.size} items)")
     }
 
-    private fun createChannel(category: Category): Long {
-        // Build a content URI pointing to the drawable resource
+    private fun createChannel(catalogInfo: CatalogInfo): Long {
         val logoUri = Uri.Builder()
             .scheme("android.resource")
             .authority(context.packageName)
@@ -123,10 +144,10 @@ class LauncherChannels(private val context: Context) {
 
         val builder = Channel.Builder()
             .setType(TvContractCompat.Channels.TYPE_PREVIEW)
-            .setDisplayName(category.channelName(context))
-            .setDescription(category.channelDescription())
+            .setDisplayName(catalogInfo.catalogName)
+            .setDescription(catalogInfo.catalogType)
             .setAppLinkIconUri(logoUri)
-            .setAppLinkIntentUri(Uri.parse("channel://tmdb/${category.key}"))
+            .setAppLinkIntentUri(Uri.parse("channel://tvhome/${catalogInfo.catalogId}"))
 
         val channelUri = context.contentResolver.insert(
             TvContractCompat.Channels.CONTENT_URI,
@@ -141,10 +162,9 @@ class LauncherChannels(private val context: Context) {
 
     private fun createProgram(
         channelId: Long,
-        category: Category,
-        item: TmdbItem,
-        displayType: DisplayType,
-        posterProvider: String
+        catalogInfo: CatalogInfo,
+        item: ChannelItem,
+        displayType: DisplayType
     ) {
         val deepLinkUri = DeepLinks.buildChannelUri(item)
 
@@ -155,30 +175,20 @@ class LauncherChannels(private val context: Context) {
 
         val programBuilder = PreviewProgram.Builder()
             .setChannelId(channelId)
-            .setTitle(item.displayName)
-            .setDescription(item.overview ?: "")
+            .setTitle(item.name)
+            .setDescription(item.description ?: "")
             .setIntent(intent)
-            .setType(if (item.type == "tv") TYPE_TV_SHOW else TYPE_MOVIE)
+            .setType(if (item.type == "series") TYPE_TV_SHOW else TYPE_MOVIE)
 
         when (displayType) {
             DisplayType.POSTER -> {
-                // Vertical poster image — 2:3 aspect ratio
-                val posterUri = Uri.parse(item.posterUrl(posterProvider))
-                Log.d(
-                    TAG,
-                    "Creating program: ${item.displayName}, posterProvider=$posterProvider, imdbId=${item.imdb_id}, posterUrl=${
-                        posterUri.toString().take(80)
-                    }"
-                )
+                val posterUri = Uri.parse(item.posterUrl)
                 programBuilder
                     .setPosterArtUri(posterUri)
                     .setPosterArtAspectRatio(ASPECT_RATIO_2_3)
             }
 
             DisplayType.WIDE -> {
-                // Wide landscape image — 16:9 aspect ratio
-                // Use both poster art and thumbnail with 16:9 so the launcher
-                // recognises this as wide/landscape content.
                 val wideUri = Uri.parse(item.backdropUrl)
                 programBuilder
                     .setPosterArtUri(wideUri)
@@ -199,8 +209,19 @@ class LauncherChannels(private val context: Context) {
 
     private fun deleteAllChannels() {
         try {
-            val uri = TvContractCompat.buildChannelsUriForInput("tmdb")
-            context.contentResolver.delete(uri, null, null)
+            // Query all channels and delete by ID (more reliable than input-based delete)
+            val allChannels = context.contentResolver.query(
+                TvContractCompat.Channels.CONTENT_URI,
+                null, null, null, null
+            )
+            allChannels?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(TvContractCompat.Channels._ID)
+                while (cursor.moveToNext()) {
+                    val channelId = cursor.getLong(idIndex)
+                    val channelUri = ContentUris.withAppendedId(TvContractCompat.Channels.CONTENT_URI, channelId)
+                    context.contentResolver.delete(channelUri, null, null)
+                }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to delete channels", e)
         }
