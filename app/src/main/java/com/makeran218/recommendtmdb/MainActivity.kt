@@ -7,16 +7,9 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.layout.*
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -27,11 +20,10 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.makeran218.recommendtmdb.ui.CatalogSelectionScreen
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -403,6 +395,7 @@ fun MainContent(
     settings: AppPreferences.Settings
 ) {
     var showManageDialog by remember { mutableStateOf(false) }
+    var showCatalogSelection by remember { mutableStateOf(false) }
 
     // Flatten all catalog entries with their manifest URL (cached to avoid recomposition cost)
     val allCatalogs = remember(catalogs) {
@@ -533,48 +526,38 @@ fun MainContent(
         }
 
         // ========================================
-        // BOTTOM SECTION: Catalogs Header + Grid
+        // BOTTOM SECTION: Catalogs Management
         // ========================================
 
-        // Catalogs header (full width, outside grid)
-        Text(
-            "Catalogs ($enabledCatalogs / $totalCatalogs)",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold
-        )
-
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+        // Catalogs summary with button to open selection page
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Catalog chips (3 per row)
-            items(
-                items = allCatalogs,
-                key = { (catalog, manifestUrl) -> "$manifestUrl::${catalog.catalogType}::${catalog.catalogId}" }
-            ) { (catalog, manifestUrl) ->
-                CatalogChip(
-                    catalog = catalog,
-                    manifestUrl = manifestUrl,
-                    onToggle = { enabled ->
-                        viewModel.toggleCatalog(
-                            "$manifestUrl::${catalog.catalogType}::${catalog.catalogId}",
-                            enabled
-                        )
-                    }
+            Column {
+                Text(
+                    "Catalogs ($enabledCatalogs / $totalCatalogs)",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    if (enabledCatalogs == 0 && totalCatalogs > 0)
+                        "⚠ Tap button to enable catalogs"
+                    else
+                        "$enabledCatalogs catalog${if (enabledCatalogs != 1) "s" else ""} enabled",
+                    fontSize = 11.sp,
+                    color = Color.Gray
                 )
             }
-
-            // Warning if no catalogs enabled
-            item {
-                if (enabledCatalogs == 0 && totalCatalogs > 0) {
-                    Text(
-                        "⚠ Enable at least one catalog",
-                        color = Color(0xFFFFA500),
-                        fontSize = 10.sp
-                    )
-                }
+            Button(
+                onClick = { showCatalogSelection = true },
+                modifier = Modifier.width(200.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Icon(Icons.Default.Settings, null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Manage Catalogs", fontSize = 12.sp)
             }
         }
     }
@@ -593,74 +576,17 @@ fun MainContent(
             onRefetchManifests = { viewModel.refetchManifests() }
         )
     }
-}
 
-@Composable
-fun CatalogChip(
-    catalog: CatalogEntry,
-    manifestUrl: String,
-    onToggle: (Boolean) -> Unit
-) {
-    var isFocused by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .onFocusChanged { focusState ->
-                isFocused = focusState.isFocused
+    // Catalog selection screen (full-screen, paginated)
+    if (showCatalogSelection) {
+        CatalogSelectionScreen(
+            allCatalogs = allCatalogs,
+            enabledCount = enabledCatalogs,
+            totalCount = totalCatalogs,
+            onBack = { showCatalogSelection = false },
+            onToggle = { key, enabled ->
+                viewModel.toggleCatalog(key, enabled)
             }
-            .focusRequester(focusRequester)
-            .focusable()
-            .background(
-                color = if (isFocused) Color(0xFF4D50FF) else Color.Transparent,
-                shape = MaterialTheme.shapes.small
-            )
-            .padding(4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Icon on the left
-        Icon(
-            if (catalog.catalogType == "series") Icons.Default.VideoLibrary else Icons.Default.PlayCircle,
-            contentDescription = null,
-            tint = if (isFocused) Color.White else MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(14.dp)
-        )
-
-        Spacer(Modifier.width(4.dp))
-
-        // Text + switch on the right
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
-            Text(
-                catalog.catalogName,
-                fontWeight = FontWeight.Bold,
-                fontSize = 11.sp,
-                color = Color.White,
-                maxLines = 1,
-                style = TextStyle(lineHeight = 13.sp)
-            )
-            Text(
-                catalog.catalogType.uppercase(),
-                fontSize = 8.sp,
-                color = if (isFocused) Color.White.copy(alpha = 0.7f) else Color.Gray,
-                style = TextStyle(lineHeight = 7.sp)
-            )
-        }
-
-        // Switch on the far right
-        Switch(
-            checked = catalog.enabled,
-            onCheckedChange = { newValue ->
-                onToggle(newValue)
-            },
-            modifier = Modifier
-                .focusable(false)
-                .graphicsLayer {
-                    scaleX = 0.7f
-                    scaleY = 0.7f
-                }
         )
     }
 }
@@ -789,7 +715,12 @@ class ManifestViewModel(app: android.app.Application) : androidx.lifecycle.Andro
                                         it.extraRequired?.contains("genre") != true
                             }
                             .map { c ->
-                                CatalogEntry(c.id, c.name, c.type, enabled.contains("$manifestUrl::${c.type}::${c.id}"))
+                                CatalogEntry(
+                                    c.id,
+                                    c.name,
+                                    c.type,
+                                    enabled.contains("$manifestUrl::${c.type}::${c.id}")
+                                )
                             }
 
                         ManifestRepository.cacheManifest(context, manifestUrl, entries)

@@ -64,6 +64,7 @@ class LauncherChannels(private val context: Context) {
         val totalItems = itemsByCatalog.values.sumOf { it.size }
 
         Log.d(TAG, "Starting channel sync: ${itemsByCatalog.size} catalogs, $totalItems total items")
+        Log.d(TAG, "Current settings: displayType=$displayType")
 
         // Collect all existing catalog IDs so we can clean up stale channels later
         val existingChannels = context.contentResolver.query(
@@ -175,11 +176,49 @@ class LauncherChannels(private val context: Context) {
         // Ensure channel is browsable (re-affirm after each sync)
         TvContractCompat.requestChannelBrowsable(context, channelId)
 
+        // Delete ALL existing programs in this channel to remove stale items
+        // (e.g., from provider changes: Nuvio → Stremio changes URIs)
+        // NOTE: TV provider doesn't allow selection clauses, so we query ALL programs
+        // and filter client-side by channel_id
+        try {
+            val existingPrograms = context.contentResolver.query(
+                TvContractCompat.PreviewPrograms.CONTENT_URI,
+                arrayOf(
+                    TvContractCompat.PreviewPrograms._ID,
+                    TvContractCompat.PreviewPrograms.COLUMN_CHANNEL_ID
+                ),
+                null, // NO selection clause - TV provider rejects it
+                null,
+                null
+            )
+            existingPrograms?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(TvContractCompat.PreviewPrograms._ID)
+                val channelIndex = cursor.getColumnIndex(TvContractCompat.PreviewPrograms.COLUMN_CHANNEL_ID)
+                while (cursor.moveToNext()) {
+                    val programId = cursor.getLong(idIndex)
+                    val programChannelId = cursor.getLong(channelIndex)
+                    // Only delete programs belonging to this channel
+                    if (programChannelId == channelId) {
+                        val programUri = ContentUris.withAppendedId(
+                            TvContractCompat.PreviewPrograms.CONTENT_URI,
+                            programId
+                        )
+                        context.contentResolver.delete(programUri, null, null)
+                        Log.d(TAG, "Deleted old program $programId from channel $channelId")
+                    }
+                }
+            }
+            Log.d(TAG, "Cleared all programs for channel $channelId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to clear programs for channel $channelId", e)
+        }
+
         for (item in items) {
             mutex.withLock {
                 createProgram(context, channelId, catalogInfo, item, displayType)
             }
             onProgress()
+            Log.d(TAG, "Created program: ${item.name} (type=${item.type}, displayType=$displayType)")
         }
 
         Log.d(TAG, "Completed catalog: ${catalogInfo.catalogName} (${items.size} items)")
@@ -230,34 +269,11 @@ class LauncherChannels(private val context: Context) {
         displayType: DisplayType
     ) {
         val deepLinkUri = DeepLinks.buildChannelUri(item)
+        Log.d(TAG, "Building program: ${item.name} -> URI: $deepLinkUri")
 
         val intent = Intent(Intent.ACTION_VIEW).apply {
             data = deepLinkUri
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-
-        // Delete any existing program with the same intent URI to avoid duplicates
-        try {
-            val existingPrograms = context.contentResolver.query(
-                TvContractCompat.PreviewPrograms.CONTENT_URI,
-                null,
-                "app_link_intent_uri = ? AND channel_id = ?",
-                arrayOf(deepLinkUri.toString(), channelId.toString()),
-                null
-            )
-            existingPrograms?.use { cursor ->
-                val idIndex = cursor.getColumnIndex(TvContractCompat.PreviewPrograms._ID)
-                while (cursor.moveToNext()) {
-                    val oldProgramId = cursor.getLong(idIndex)
-                    val programUri = ContentUris.withAppendedId(
-                        TvContractCompat.PreviewPrograms.CONTENT_URI,
-                        oldProgramId
-                    )
-                    context.contentResolver.delete(programUri, null, null)
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to delete existing programs for deduplication", e)
         }
 
         val programBuilder = PreviewProgram.Builder()

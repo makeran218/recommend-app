@@ -63,6 +63,7 @@ class SyncWorker(
             for ((catalogKey, items) in filteredItems) {
                 ManifestRepository.cacheCatalogItems(context, catalogKey, items)
             }
+            android.util.Log.d("Cache", "Sync complete. All caches refreshed with current settings.")
 
             // Update last sync time
             ManifestRepository.setLastSyncTime(context, System.currentTimeMillis())
@@ -94,16 +95,11 @@ class SyncWorker(
 
     /**
      * Fetch items for a single catalog.
-     * Tries cache first, then falls back to network fetch.
+     * Always fetches fresh data from network to ensure current settings are used.
      */
     private suspend fun fetchCatalogItems(catalogKey: String): List<ChannelItem> {
         return try {
-            // Try cache first
-            val cached = ManifestRepository.loadCachedCatalogItems(applicationContext, catalogKey)
-            if (cached != null) {
-                Log.d(TAG, "Catalog $catalogKey: loaded from cache (${cached.size} items)")
-                return cached
-            }
+            Log.d(TAG, "Fetching catalog from network: $catalogKey")
 
             // Parse the catalog key to get manifest URL, type, and catalog ID
             val (manifestUrl, catalogType, catalogId) = parseCatalogKey(catalogKey)
@@ -116,7 +112,7 @@ class SyncWorker(
             val baseUrl = XperienceClient.extractBaseUrl(manifestUrl)
             val catalogUrl = XperienceClient.buildCatalogUrl(baseUrl, catalogType, catalogId)
 
-            Log.d(TAG, "Fetching catalog: $catalogUrl")
+            Log.d(TAG, "Fetching catalog URL: $catalogUrl")
             val response = XperienceClient.fetchCatalog(catalogUrl)
 
             // Convert MetaItems to ChannelItems
@@ -140,7 +136,7 @@ class SyncWorker(
                 )
             }
 
-            Log.d(TAG, "Catalog $catalogId: fetched ${items.size} items")
+            Log.d(TAG, "Catalog $catalogId: fetched ${items.size} items from network")
             items
 
         } catch (e: Exception) {

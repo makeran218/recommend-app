@@ -131,23 +131,33 @@ object ManifestRepository {
      * Cache catalog items (meta list) for a catalog key.
      */
     suspend fun cacheCatalogItems(context: Context, catalogKey: String, items: List<ChannelItem>) {
+        val cacheKey = "$CATALOG_CACHE_PREFIX$catalogKey"
         context.manifestDataStore.edit { prefs ->
             val json = gson.toJson(items)
-            prefs[stringPreferencesKey("$CATALOG_CACHE_PREFIX$catalogKey")] = json
+            prefs[stringPreferencesKey(cacheKey)] = json
         }
+        android.util.Log.d("Cache", "CACHED: key=$cacheKey, items=${items.size}, catalog=$catalogKey")
     }
 
     /**
      * Load cached catalog items.
+     * Returns null if no cache exists.
      */
     suspend fun loadCachedCatalogItems(context: Context, catalogKey: String): List<ChannelItem>? {
+        val cacheKey = "$CATALOG_CACHE_PREFIX$catalogKey"
         return try {
             val prefs = context.manifestDataStore.data.first()
-            val json = prefs[stringPreferencesKey("$CATALOG_CACHE_PREFIX$catalogKey")]
-            if (json.isNullOrEmpty()) return null
+            android.util.Log.d("Cache", "LOADING: key=$cacheKey, catalog=$catalogKey")
+            val json = prefs[stringPreferencesKey(cacheKey)]
+            if (json.isNullOrEmpty()) {
+                android.util.Log.d("Cache", "LOAD MISS: key=$cacheKey (empty or null)")
+                return null
+            }
 
             val type = object : com.google.gson.reflect.TypeToken<List<ChannelItem>>() {}.type
-            gson.fromJson(json, type) as List<ChannelItem>
+            val items = gson.fromJson(json, type) as List<ChannelItem>
+            android.util.Log.d("Cache", "LOAD HIT: key=$cacheKey, items=${items.size}")
+            items
         } catch (e: Exception) {
             android.util.Log.e("ManifestRepository", "Failed to load cached catalog items: ${e.message}", e)
             null
