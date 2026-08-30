@@ -10,7 +10,7 @@ object SyncScheduler {
 
     fun startPeriodicSync(context: Context) {
         val workRequest = PeriodicWorkRequestBuilder<SyncWorker>(
-            6, TimeUnit.HOURS,
+            2, TimeUnit.HOURS,
             1, TimeUnit.HOURS
         )
             .setInitialDelay(1, TimeUnit.MINUTES)

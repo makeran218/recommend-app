@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.HashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 class LauncherChannels(private val context: Context) {
@@ -50,7 +51,9 @@ class LauncherChannels(private val context: Context) {
     }
 
     /**
-     * Delete all existing channels first, then insert all items for all catalogs.
+     * Sync all catalogs while preserving existing channels.
+     * Channels are identified by catalogId in appLinkIntentUri to avoid
+     * recreation (which would require re-enabling in the launcher).
      */
     private suspend fun syncChannels(
         itemsByCatalog: Map<String, List<ChannelItem>>,
@@ -62,8 +65,23 @@ class LauncherChannels(private val context: Context) {
 
         Log.d(TAG, "Starting channel sync: ${itemsByCatalog.size} catalogs, $totalItems total items")
 
-        // Delete all existing channels first
-        deleteAllChannels()
+        // Collect all existing catalog IDs so we can clean up stale channels later
+        val existingChannels = context.contentResolver.query(
+            TvContractCompat.Channels.CONTENT_URI,
+            null, null, null, null
+        )
+        val existingCatalogIds = mutableSetOf<String>()
+        existingChannels?.use { cursor ->
+            val idIndex = cursor.getColumnIndex(TvContractCompat.Channels._ID)
+            val uriIndex = cursor.getColumnIndex(TvContractCompat.Channels.COLUMN_APP_LINK_INTENT_URI)
+            while (cursor.moveToNext()) {
+                val channelId = cursor.getLong(idIndex)
+                val intentUri = cursor.getString(uriIndex)
+                existingCatalogIds.add(extractCatalogId(intentUri, channelId))
+            }
+        }
+
+        val currentCatalogIds = mutableSetOf<String>()
 
         for ((catalogKey, items) in itemsByCatalog) {
             val catalogInfo = parseCatalogKey(context, catalogKey) ?: continue
@@ -76,6 +94,14 @@ class LauncherChannels(private val context: Context) {
                 if (totalInserted % 10 == 0 || totalInserted == totalItems) {
                     Log.d(TAG, "Inserted $totalInserted / $totalItems items...")
                 }
+            }
+            currentCatalogIds.add(catalogInfo.catalogId)
+        }
+
+        // Clean up stale channels that are no longer in any catalog
+        for (catalogId in existingCatalogIds) {
+            if (catalogId.isNotEmpty() && !currentCatalogIds.contains(catalogId)) {
+                deleteChannelByCatalogId(context, catalogId)
             }
         }
 
@@ -114,6 +140,7 @@ class LauncherChannels(private val context: Context) {
 
     /**
      * Sync a single catalog's items to the launcher.
+     * Reuses existing channel if one with the same catalogId already exists.
      */
     private suspend fun syncCatalog(
         context: Context,
@@ -123,11 +150,34 @@ class LauncherChannels(private val context: Context) {
         mutex: Mutex,
         onProgress: () -> Unit
     ) {
-        val channelId = createChannel(catalogInfo)
+        // Build map of existing channels indexed by catalogId
+        val channelMap = HashMap<String, Long>()
+        val existingChannels = context.contentResolver.query(
+            TvContractCompat.Channels.CONTENT_URI,
+            null, null, null, null
+        )
+        existingChannels?.use { cursor ->
+            val idIndex = cursor.getColumnIndex(TvContractCompat.Channels._ID)
+            val uriIndex = cursor.getColumnIndex(TvContractCompat.Channels.COLUMN_APP_LINK_INTENT_URI)
+            while (cursor.moveToNext()) {
+                val channelId = cursor.getLong(idIndex)
+                val intentUri = cursor.getString(uriIndex)
+                val catalogId = extractCatalogId(intentUri, channelId)
+                if (catalogId.isNotEmpty()) {
+                    channelMap[catalogId] = channelId
+                }
+            }
+        }
+
+        // Reuse existing channel or create new one
+        val channelId = channelMap[catalogInfo.catalogId] ?: createChannel(catalogInfo)
+
+        // Ensure channel is browsable (re-affirm after each sync)
+        TvContractCompat.requestChannelBrowsable(context, channelId)
 
         for (item in items) {
             mutex.withLock {
-                createProgram(channelId, catalogInfo, item, displayType)
+                createProgram(context, channelId, catalogInfo, item, displayType)
             }
             onProgress()
         }
@@ -160,7 +210,20 @@ class LauncherChannels(private val context: Context) {
         return channelId
     }
 
+    /**
+     * Extract catalogId from appLinkIntentUri (format: channel://tvhome/{catalogId}).
+     * Returns empty string if the URI format is unrecognized.
+     */
+    private fun extractCatalogId(intentUri: String?, channelId: Long): String {
+        if (intentUri?.startsWith("channel://tvhome/") == true) {
+            return intentUri.substring("channel://tvhome/".length)
+        }
+        // Fallback: unknown channel format, use channel ID as fallback
+        return channelId.toString()
+    }
+
     private fun createProgram(
+        context: Context,
         channelId: Long,
         catalogInfo: CatalogInfo,
         item: ChannelItem,
@@ -171,6 +234,30 @@ class LauncherChannels(private val context: Context) {
         val intent = Intent(Intent.ACTION_VIEW).apply {
             data = deepLinkUri
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        // Delete any existing program with the same intent URI to avoid duplicates
+        try {
+            val existingPrograms = context.contentResolver.query(
+                TvContractCompat.PreviewPrograms.CONTENT_URI,
+                null,
+                "app_link_intent_uri = ? AND channel_id = ?",
+                arrayOf(deepLinkUri.toString(), channelId.toString()),
+                null
+            )
+            existingPrograms?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(TvContractCompat.PreviewPrograms._ID)
+                while (cursor.moveToNext()) {
+                    val oldProgramId = cursor.getLong(idIndex)
+                    val programUri = ContentUris.withAppendedId(
+                        TvContractCompat.PreviewPrograms.CONTENT_URI,
+                        oldProgramId
+                    )
+                    context.contentResolver.delete(programUri, null, null)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to delete existing programs for deduplication", e)
         }
 
         val programBuilder = PreviewProgram.Builder()
@@ -207,23 +294,35 @@ class LauncherChannels(private val context: Context) {
         )
     }
 
-    private fun deleteAllChannels() {
+    /**
+     * Delete a specific channel by its catalogId.
+     * Queries existing channels and finds the one matching the catalogId.
+     */
+    private fun deleteChannelByCatalogId(context: Context, catalogId: String) {
         try {
-            // Query all channels and delete by ID (more reliable than input-based delete)
-            val allChannels = context.contentResolver.query(
+            val channels = context.contentResolver.query(
                 TvContractCompat.Channels.CONTENT_URI,
                 null, null, null, null
             )
-            allChannels?.use { cursor ->
+            channels?.use { cursor ->
                 val idIndex = cursor.getColumnIndex(TvContractCompat.Channels._ID)
+                val uriIndex = cursor.getColumnIndex(TvContractCompat.Channels.COLUMN_APP_LINK_INTENT_URI)
                 while (cursor.moveToNext()) {
                     val channelId = cursor.getLong(idIndex)
-                    val channelUri = ContentUris.withAppendedId(TvContractCompat.Channels.CONTENT_URI, channelId)
-                    context.contentResolver.delete(channelUri, null, null)
+                    val intentUri = cursor.getString(uriIndex)
+                    if (intentUri == "channel://tvhome/$catalogId") {
+                        val channelUri = ContentUris.withAppendedId(
+                            TvContractCompat.Channels.CONTENT_URI,
+                            channelId
+                        )
+                        context.contentResolver.delete(channelUri, null, null)
+                        Log.d(TAG, "Deleted stale channel: $catalogId")
+                        break
+                    }
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to delete channels", e)
+            Log.w(TAG, "Failed to delete channel for catalog $catalogId", e)
         }
     }
 }
