@@ -7,8 +7,14 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -18,11 +24,14 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,10 +39,10 @@ import androidx.compose.ui.unit.sp
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
+import androidx.lifecycle.viewModelScope
 
 class MainActivity : ComponentActivity() {
 
@@ -257,7 +266,8 @@ fun ManageManifestsDialog(
     manifestUrls: List<String>,
     onDismiss: () -> Unit,
     onAdd: (String) -> Unit,
-    onRemove: (String) -> Unit
+    onRemove: (String) -> Unit,
+    onRefetchManifests: () -> Unit
 ) {
     var addUrl by remember { mutableStateOf("") }
     var showAddField by remember { mutableStateOf(false) }
@@ -312,6 +322,15 @@ fun ManageManifestsDialog(
                         Spacer(Modifier.width(4.dp))
                         Text("Add Manifest URL")
                     }
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = onRefetchManifests,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Refresh, null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Refetch Manifests")
+                    }
                     Spacer(Modifier.height(16.dp))
                 }
 
@@ -322,7 +341,7 @@ fun ManageManifestsDialog(
                     Text("${manifestUrls.size} manifest(s)", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
 
-                    Column(
+                    LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = 300.dp)
@@ -330,13 +349,15 @@ fun ManageManifestsDialog(
                                 MaterialTheme.colorScheme.surfaceVariant,
                                 shape = MaterialTheme.shapes.small
                             )
-                            .padding(8.dp)
+                            .padding(8.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        manifestUrls.forEach { url ->
+                        items(manifestUrls, key = { url -> url }) { url ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
+                                    .padding(horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
@@ -371,7 +392,7 @@ fun ManageManifestsDialog(
 }
 
 // ==========================================
-// Main Content - Simple List
+// Main Content - Compact Grid Layout
 // ==========================================
 
 @Composable
@@ -383,162 +404,177 @@ fun MainContent(
 ) {
     var showManageDialog by remember { mutableStateOf(false) }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(vertical = 8.dp)
+    // Flatten all catalog entries with their manifest URL (cached to avoid recomposition cost)
+    val allCatalogs = remember(catalogs) {
+        catalogs.flatMap { (manifestUrl, catalogList) ->
+            catalogList.map { it to manifestUrl }
+        }
+    }
+
+    val totalCatalogs = remember(catalogs) {
+        catalogs.values.sumOf { it.size }
+    }
+    val enabledCatalogs = remember(catalogs) {
+        catalogs.values.sumOf { it.count { c -> c.enabled } }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Header
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("TV Home", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Text("${manifestUrls.size} manifest(s)", fontSize = 14.sp, color = Color.Gray)
-            }
+        // ========================================
+        // TOP SECTION: Title, Actions, Settings
+        // ========================================
+
+        // Title + manifest count
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("TV Home", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("${manifestUrls.size} manifest(s)", fontSize = 11.sp, color = Color.Gray)
         }
 
-        // Manage manifests button
-        item {
-            Button(
-                onClick = { showManageDialog = true },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Default.Settings, null)
-                Spacer(Modifier.width(8.dp))
-                Text("Manage Manifests")
-            }
-        }
-
-        // Refresh button
-        item {
-            Button(
-                onClick = { viewModel.refreshCatalogs() },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Default.Refresh, null)
-                Spacer(Modifier.width(8.dp))
-                Text("Refresh Catalogs")
-            }
-        }
-
-        // Catalogs header
-        item {
-            val total = catalogs.values.sumOf { it.size }
-            val enabled = catalogs.values.sumOf { it.count { c -> c.enabled } }
-            Text("Catalogs ($enabled / $total)", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        }
-
-        // Catalog items
-        catalogs.forEach { (manifestUrl, catalogList) ->
-            catalogList.forEach { catalog ->
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            if (catalog.catalogType == "series") Icons.Default.VideoLibrary else Icons.Default.PlayCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(catalog.catalogName, fontWeight = FontWeight.Bold)
-                            Text(catalog.catalogType.uppercase(), fontSize = 12.sp, color = Color.Gray)
-                        }
-                        Switch(
-                            checked = catalog.enabled,
-                            onCheckedChange = { enabled ->
-                                viewModel.toggleCatalog(
-                                    "$manifestUrl::${catalog.catalogType}::${catalog.catalogId}",
-                                    enabled
-                                )
-                            }
-                        )
-                    }
-                }
-            }
-        }
-
-        // Sync button
-        item {
+        // Action buttons: Sync | Manage | Refresh
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Button(
                 onClick = { viewModel.syncChannels() },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
             ) {
-                Icon(Icons.Default.Refresh, null)
-                Spacer(Modifier.width(8.dp))
-                Text("Sync Channels Now")
+                Icon(Icons.Default.Sync, null, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Sync Channels", fontSize = 12.sp)
+            }
+            Button(
+                onClick = { showManageDialog = true },
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+            ) {
+                Icon(Icons.Default.Settings, null, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Manage", fontSize = 12.sp)
+            }
+            Button(
+                onClick = { viewModel.refreshCatalogs() },
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+            ) {
+                Icon(Icons.Default.Refresh, null, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Refresh", fontSize = 12.sp)
             }
         }
 
-        // Settings
-        item {
-            Text("Settings", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        }
+        // Poster settings + Player settings side by side
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Poster Settings
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Poster Settings",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val selected = settings.displayType
+                    for ((key, label) in listOf("POSTER" to "Poster", "WIDE" to "Wide")) {
+                        OutlinedButton(
+                            onClick = { viewModel.setDisplayType(key) },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                label,
+                                fontSize = 11.sp,
+                                color = if (selected == key) MaterialTheme.colorScheme.primary else Color.White
+                            )
+                        }
+                    }
+                }
+            }
 
-        // Playback provider
-        item {
-            Text(
-                "Playback App",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val selected = settings.playbackProvider
-                for ((key, label) in listOf("nuvio" to "Nuvio", "stremio" to "Stremio")) {
-                    OutlinedButton(
-                        onClick = { viewModel.setPlaybackProvider(key) },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = if (selected == key) MaterialTheme.colorScheme.primary else Color.White
-                        )
-                    ) {
-                        Text(label, color = if (selected == key) MaterialTheme.colorScheme.primary else Color.White)
+            // Player Settings
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Player Settings",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val selected = settings.playbackProvider
+                    for ((key, label) in listOf("nuvio" to "Nuvio", "stremio" to "Stremio")) {
+                        OutlinedButton(
+                            onClick = { viewModel.setPlaybackProvider(key) },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                label,
+                                fontSize = 11.sp,
+                                color = if (selected == key) MaterialTheme.colorScheme.primary else Color.White
+                            )
+                        }
                     }
                 }
             }
         }
 
-        // Display type
-        item {
-            Text(
-                "Display Type",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val selected = settings.displayType
-                for ((key, label) in listOf("POSTER" to "Poster", "WIDE" to "Wide")) {
-                    OutlinedButton(
-                        onClick = { viewModel.setDisplayType(key) },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = if (selected == key) MaterialTheme.colorScheme.primary else Color.White
-                        )
-                    ) {
-                        Text(label, color = if (selected == key) MaterialTheme.colorScheme.primary else Color.White)
-                    }
-                }
-            }
-        }
+        // ========================================
+        // BOTTOM SECTION: Catalogs Header + Grid
+        // ========================================
 
-        // Warning if no catalogs enabled
-        item {
-            val total = catalogs.values.sumOf { it.size }
-            val enabled = catalogs.values.sumOf { it.count { c -> c.enabled } }
-            if (enabled == 0 && total > 0) {
-                Text("⚠ Enable at least one catalog", color = Color(0xFFFFA500), fontSize = 12.sp)
+        // Catalogs header (full width, outside grid)
+        Text(
+            "Catalogs ($enabledCatalogs / $totalCatalogs)",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
+
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(4),
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            // Catalog chips (3 per row)
+            items(
+                items = allCatalogs,
+                key = { (catalog, manifestUrl) -> "$manifestUrl::${catalog.catalogType}::${catalog.catalogId}" }
+            ) { (catalog, manifestUrl) ->
+                CatalogChip(
+                    catalog = catalog,
+                    manifestUrl = manifestUrl,
+                    onToggle = { enabled ->
+                        viewModel.toggleCatalog(
+                            "$manifestUrl::${catalog.catalogType}::${catalog.catalogId}",
+                            enabled
+                        )
+                    }
+                )
+            }
+
+            // Warning if no catalogs enabled
+            item {
+                if (enabledCatalogs == 0 && totalCatalogs > 0) {
+                    Text(
+                        "⚠ Enable at least one catalog",
+                        color = Color(0xFFFFA500),
+                        fontSize = 10.sp
+                    )
+                }
             }
         }
     }
@@ -553,7 +589,78 @@ fun MainContent(
             },
             onRemove = { url ->
                 viewModel.removeManifestUrl(url)
+            },
+            onRefetchManifests = { viewModel.refetchManifests() }
+        )
+    }
+}
+
+@Composable
+fun CatalogChip(
+    catalog: CatalogEntry,
+    manifestUrl: String,
+    onToggle: (Boolean) -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { focusState ->
+                isFocused = focusState.isFocused
             }
+            .focusRequester(focusRequester)
+            .focusable()
+            .background(
+                color = if (isFocused) Color(0xFF4D50FF) else Color.Transparent,
+                shape = MaterialTheme.shapes.small
+            )
+            .padding(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Icon on the left
+        Icon(
+            if (catalog.catalogType == "series") Icons.Default.VideoLibrary else Icons.Default.PlayCircle,
+            contentDescription = null,
+            tint = if (isFocused) Color.White else MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(14.dp)
+        )
+
+        Spacer(Modifier.width(4.dp))
+
+        // Text + switch on the right
+        Column(
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(
+                catalog.catalogName,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                color = Color.White,
+                maxLines = 1,
+                style = TextStyle(lineHeight = 13.sp)
+            )
+            Text(
+                catalog.catalogType.uppercase(),
+                fontSize = 8.sp,
+                color = if (isFocused) Color.White.copy(alpha = 0.7f) else Color.Gray,
+                style = TextStyle(lineHeight = 7.sp)
+            )
+        }
+
+        // Switch on the far right
+        Switch(
+            checked = catalog.enabled,
+            onCheckedChange = { newValue ->
+                onToggle(newValue)
+            },
+            modifier = Modifier
+                .focusable(false)
+                .graphicsLayer {
+                    scaleX = 0.7f
+                    scaleY = 0.7f
+                }
         )
     }
 }
@@ -580,13 +687,13 @@ class ManifestViewModel(app: android.app.Application) : androidx.lifecycle.Andro
 
     init {
         // Each collector must run in its own coroutine — collect() blocks
-        MainScope().launch {
+        viewModelScope.launch {
             AppPreferences.readPreferences(context).collect { s ->
                 _settings.value = s
                 DeepLinks.setProvider(DeepLinks.getProvider(s.playbackProvider))
             }
         }
-        MainScope().launch {
+        viewModelScope.launch {
             ManifestRepository.readManifestUrls(context).collect { urls ->
                 _manifestUrls.value = urls
                 if (urls.isNotEmpty() && _catalogs.value.isEmpty()) {
@@ -594,7 +701,7 @@ class ManifestViewModel(app: android.app.Application) : androidx.lifecycle.Andro
                 }
             }
         }
-        MainScope().launch {
+        viewModelScope.launch {
             ManifestRepository.readEnabledCatalogs(context).collect { enabled ->
                 val current = _catalogs.value
                 val updated = current.mapValues { (manifestUrl, catalogList) ->
@@ -631,7 +738,7 @@ class ManifestViewModel(app: android.app.Application) : androidx.lifecycle.Andro
     }
 
     fun addManifestUrl(url: String) {
-        MainScope().launch {
+        viewModelScope.launch {
             val trimmed = url.trim()
             // Auto-add https:// if missing
             val cleanUrl = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
@@ -651,34 +758,30 @@ class ManifestViewModel(app: android.app.Application) : androidx.lifecycle.Andro
     }
 
     fun removeManifestUrl(url: String) {
-        MainScope().launch {
+        viewModelScope.launch {
             ManifestRepository.removeManifestUrl(context, url)
             _catalogs.value = _catalogs.value.filterKeys { it != url }
         }
     }
 
-    fun refreshCatalogs() {
-        MainScope().launch {
+    /**
+     * Always fetch manifest.json from network for all URLs.
+     * Called from "Refetch Manifests" button in Manage Manifests dialog.
+     */
+    fun refetchManifests() {
+        viewModelScope.launch {
             try {
                 val urls = ManifestRepository.readManifestUrls(context).first()
                 val enabled = ManifestRepository.readEnabledCatalogs(context).first()
                 val newCatalogs = mutableMapOf<String, List<CatalogEntry>>()
 
                 for (manifestUrl in urls) {
-                    // Skip invalid URLs
                     if (!manifestUrl.startsWith("http://") && !manifestUrl.startsWith("https://")) {
                         Log.w("VM", "Skipping invalid URL: $manifestUrl")
                         continue
                     }
                     try {
-                        val cached = ManifestRepository.loadCachedCatalogs(context, manifestUrl)
-                        if (cached != null) {
-                            newCatalogs[manifestUrl] = cached.map { c ->
-                                c.copy(enabled = enabled.contains("$manifestUrl::${c.catalogType}::${c.catalogId}"))
-                            }
-                            continue
-                        }
-
+                        // Always fetch from network (never use cache)
                         val manifest = XperienceClient.fetchManifest(manifestUrl)
                         val entries = manifest.catalogs
                             .filter {
@@ -691,12 +794,49 @@ class ManifestViewModel(app: android.app.Application) : androidx.lifecycle.Andro
 
                         ManifestRepository.cacheManifest(context, manifestUrl, entries)
                         newCatalogs[manifestUrl] = entries
-                        Log.d("VM", "Loaded ${entries.size} catalogs")
+                        Log.d("VM", "Refetched ${entries.size} catalogs for $manifestUrl")
                     } catch (e: Exception) {
-                        Log.e("VM", "Failed to fetch manifest: $manifestUrl", e)
+                        Log.e("VM", "Failed to refetch manifest: $manifestUrl", e)
                     }
                 }
 
+                if (newCatalogs.isNotEmpty()) {
+                    _catalogs.value = newCatalogs
+                }
+            } catch (e: Exception) {
+                Log.e("VM", "Refetch failed", e)
+            }
+        }
+    }
+
+    /**
+     * Uses ONLY cached catalog data (no network fetch).
+     * Called from "Refresh Catalogs" button.
+     */
+    fun refreshCatalogs() {
+        viewModelScope.launch {
+            Log.d("VM", "Refresh Catalogs button clicked")
+            try {
+                val urls = ManifestRepository.readManifestUrls(context).first()
+                Log.d("VM", "Refresh Catalogs: found ${urls.size} manifest URL(s)")
+                val enabled = ManifestRepository.readEnabledCatalogs(context).first()
+                Log.d("VM", "Refresh Catalogs: found ${enabled.size} enabled catalog(s)")
+                val newCatalogs = mutableMapOf<String, List<CatalogEntry>>()
+
+                for (manifestUrl in urls) {
+                    Log.d("VM", "Refresh Catalogs: loading cache for $manifestUrl")
+                    val cached = ManifestRepository.loadCachedCatalogs(context, manifestUrl)
+                    if (cached != null) {
+                        Log.d("VM", "Refresh Catalogs: loaded ${cached.size} catalogs from cache")
+                        newCatalogs[manifestUrl] = cached.map { c ->
+                            c.copy(enabled = enabled.contains("$manifestUrl::${c.catalogType}::${c.catalogId}"))
+                        }
+                    } else {
+                        Log.w("VM", "Refresh Catalogs: no cache found for $manifestUrl")
+                    }
+                }
+
+                Log.d("VM", "Refresh Catalogs: updating UI with ${newCatalogs.size} manifest(s)")
                 if (newCatalogs.isNotEmpty()) {
                     _catalogs.value = newCatalogs
                 }
@@ -707,13 +847,13 @@ class ManifestViewModel(app: android.app.Application) : androidx.lifecycle.Andro
     }
 
     fun toggleCatalog(key: String, enabled: Boolean) {
-        MainScope().launch {
+        viewModelScope.launch {
             ManifestRepository.toggleCatalog(context, key, enabled)
         }
     }
 
     fun syncChannels() {
-        MainScope().launch {
+        viewModelScope.launch {
             _syncInProgress.value = true
             Log.d("VM", "Sync started")
             try {
@@ -734,11 +874,11 @@ class ManifestViewModel(app: android.app.Application) : androidx.lifecycle.Andro
     }
 
     fun setPlaybackProvider(provider: String) {
-        MainScope().launch { AppPreferences.setPlaybackProvider(context, provider) }
+        viewModelScope.launch { AppPreferences.setPlaybackProvider(context, provider) }
     }
 
     fun setDisplayType(display: String) {
-        MainScope().launch { AppPreferences.setDisplayType(context, display) }
+        viewModelScope.launch { AppPreferences.setDisplayType(context, display) }
     }
 }
 
@@ -749,7 +889,7 @@ class ManifestViewModel(app: android.app.Application) : androidx.lifecycle.Andro
 @Composable
 fun TVHomeTheme(content: @Composable () -> Unit) {
     val colors = darkColorScheme(
-        primary = Color(0xFF4D50FF),
+        primary = Color(0xFF6C63FF),
         onPrimary = Color.White,
         background = Color(0xFF1A1A2E),
         onBackground = Color.White,
