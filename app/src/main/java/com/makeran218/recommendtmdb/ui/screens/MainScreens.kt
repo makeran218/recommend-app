@@ -1,5 +1,6 @@
 package com.makeran218.recommendtmdb.ui.screens
 
+import com.makeran218.recommendtmdb.ui.FocusableButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -216,7 +217,7 @@ fun MainContent(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(
+                FocusableButton(
                     onClick = { viewModel.syncChannels() },
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
@@ -225,7 +226,7 @@ fun MainContent(
                     Spacer(Modifier.width(4.dp))
                     Text("Sync Channels", fontSize = 12.sp)
                 }
-                Button(
+                FocusableButton(
                     onClick = { showManageDialog = true },
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
@@ -234,7 +235,7 @@ fun MainContent(
                     Spacer(Modifier.width(4.dp))
                     Text("Manage", fontSize = 12.sp)
                 }
-                Button(
+                FocusableButton(
                     onClick = { viewModel.refreshCatalogs() },
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
@@ -253,8 +254,8 @@ fun MainContent(
                 // Poster Settings
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Poster Settings",
-                        fontSize = 11.sp,
+                        "Poster Settings:",
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -262,7 +263,7 @@ fun MainContent(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         val selected = settings.displayType
                         for ((key, label) in listOf("POSTER" to "Poster", "WIDE" to "Wide")) {
-                            OutlinedButton(
+                            FocusableButton(
                                 onClick = { viewModel.setDisplayType(key) },
                                 modifier = Modifier.weight(1f),
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
@@ -280,8 +281,8 @@ fun MainContent(
                 // Player Settings
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Player Settings",
-                        fontSize = 11.sp,
+                        "Player Settings:",
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -289,7 +290,7 @@ fun MainContent(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         val selected = settings.playbackProvider
                         for ((key, label) in listOf("nuvio" to "Nuvio", "stremio" to "Stremio")) {
-                            OutlinedButton(
+                            FocusableButton(
                                 onClick = { viewModel.setPlaybackProvider(key) },
                                 modifier = Modifier.weight(1f),
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
@@ -326,7 +327,7 @@ fun MainContent(
                         color = Color.Gray
                     )
                 }
-                Button(
+                FocusableButton(
                     onClick = { showCatalogSelection = true },
                     modifier = Modifier.width(200.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)

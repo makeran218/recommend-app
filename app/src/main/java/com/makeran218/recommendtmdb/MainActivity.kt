@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.makeran218.recommendtmdb.ui.FocusableButton
 import com.makeran218.recommendtmdb.ui.screens.MainContent
 import com.makeran218.recommendtmdb.viewmodel.AppViewModel
 
@@ -172,10 +173,9 @@ fun SetupScreen(viewModel: AppViewModel) {
 
         Spacer(Modifier.height(32.dp))
 
-        Button(
+        FocusableButton(
             onClick = { showAddDialog = true },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            modifier = Modifier.fillMaxWidth()
         ) {
             Icon(Icons.Default.Add, null)
             Spacer(Modifier.width(8.dp))
@@ -244,7 +244,7 @@ private fun AddManifestDialog(onDismiss: () -> Unit, onAdd: (String) -> Unit) {
                     TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
                         Text("Cancel")
                     }
-                    Button(
+                    FocusableButton(
                         onClick = {
                             if (url.isNotBlank()) {
                                 onAdd(url)
@@ -268,11 +268,11 @@ private fun AddManifestDialog(onDismiss: () -> Unit, onAdd: (String) -> Unit) {
 @Composable
 fun TVHomeTheme(content: @Composable () -> Unit) {
     val colors = darkColorScheme(
-        primary = Color(0xFF6C63FF),
+        primary = Color(0xFFC2185B),
         onPrimary = Color.White,
-        background = Color(0xFF1A1A2E),
+        background = Color(0xFF0A0A14),
         onBackground = Color.White,
-        surface = Color(0xFF16213E),
+        surface = Color(0xFF0E0E1A),
         onSurface = Color.White
     )
     MaterialTheme(colorScheme = colors, content = content)

@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.makeran218.recommendtmdb.ui.FocusableButton
 import com.makeran218.recommendtmdb.viewmodel.AppViewModel
 
 // ==========================================
@@ -74,7 +75,7 @@ fun AddManifestDialog(onDismiss: () -> Unit, onAdd: (String) -> Unit) {
                     TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
                         Text("Cancel")
                     }
-                    Button(
+                    FocusableButton(
                         onClick = {
                             if (url.isNotBlank()) {
                                 onAdd(url)
@@ -133,7 +134,7 @@ fun ManageManifestsDialog(
                         TextButton(onClick = { showAddField = false }) {
                             Text("Cancel")
                         }
-                        Button(
+                        FocusableButton(
                             onClick = {
                                 if (addUrl.isNotBlank()) {
                                     onAdd(addUrl)
@@ -148,7 +149,7 @@ fun ManageManifestsDialog(
                     }
                     Spacer(Modifier.height(16.dp))
                 } else {
-                    Button(
+                    FocusableButton(
                         onClick = { showAddField = true },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -157,7 +158,7 @@ fun ManageManifestsDialog(
                         Text("Add Manifest URL")
                     }
                     Spacer(Modifier.height(8.dp))
-                    Button(
+                    FocusableButton(
                         onClick = onRefetchManifests,
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -213,7 +214,7 @@ fun ManageManifestsDialog(
                 }
 
                 Spacer(Modifier.height(16.dp))
-                Button(
+                FocusableButton(
                     onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth()
                 ) {

@@ -2,6 +2,8 @@ package com.makeran218.recommendtmdb.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.makeran218.recommendtmdb.CatalogEntry
+import com.makeran218.recommendtmdb.ui.FocusableButton
 
 /** Display type options */
 private val DISPLAY_TYPE_OPTIONS = listOf("DEFAULT", "POSTER", "WIDE")
@@ -221,13 +224,17 @@ fun CatalogSelectionScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Back button — unfocusable
-                    Button(
+                    // Back button — unfocusable, outlined style
+                    OutlinedButton(
                         onClick = onBack,
                         modifier = Modifier
                             .width(120.dp)
                             .focusable(false),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.primary
+                        ),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
                     ) {
                         Icon(Icons.Default.ArrowBack, null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
@@ -251,31 +258,39 @@ fun CatalogSelectionScreen(
                         }
                     }
 
-                    // Prev / Next buttons — unfocusable
+                    // Prev / Next buttons — unfocusable, outlined style
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Button(
+                        OutlinedButton(
                             onClick = { if (currentPage > 0) currentPage-- },
                             enabled = currentPage > 0,
                             modifier = Modifier
                                 .width(120.dp)
                                 .focusable(false),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.primary
+                            ),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
                         ) {
                             Icon(Icons.Default.ArrowBack, null, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
                             Text("Prev", fontSize = 11.sp)
                         }
-                        Button(
+                        OutlinedButton(
                             onClick = { if (currentPage < totalPages - 1) currentPage++ },
                             enabled = currentPage < totalPages - 1,
                             modifier = Modifier
                                 .width(120.dp)
                                 .focusable(false),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.primary
+                            ),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
                         ) {
-                            Icon(Icons.Default.ArrowForward, null, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
                             Text("Next", fontSize = 11.sp)
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Default.ArrowForward, null, modifier = Modifier.size(14.dp))
                         }
                     }
                 }
@@ -352,9 +367,10 @@ private fun CatalogChip(
                     else -> false
                 }
             }
-            .background(
-                color = if (isFocused) Color(0xFF4D50FF) else Color.Transparent,
-                shape = MaterialTheme.shapes.small
+            .border(
+                if (isFocused) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                else BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                MaterialTheme.shapes.small
             )
             .onPreviewKeyEvent { event ->
                 // Press OK/Enter on focused chip to open detail modal
@@ -365,7 +381,7 @@ private fun CatalogChip(
                     false
                 }
             }
-            .padding(4.dp),
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -397,34 +413,39 @@ private fun CatalogChip(
             }
         }
 
-        // Display type indicator badge
-        Box(
-            modifier = Modifier
-                .padding(start = 8.dp)
-                .background(
-                    color = displayTypeColor.copy(alpha = 0.2f),
-                    shape = RoundedCornerShape(4.dp)
-                )
-                .padding(horizontal = 6.dp, vertical = 2.dp),
-            contentAlignment = Alignment.Center
+        // Display type + status grouped together on the right
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            // Display type indicator badge
+            Box(
+                modifier = Modifier
+                    .background(
+                        color = displayTypeColor.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(4.dp)
+                    )
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = DISPLAY_TYPE_LABELS[currentDisplayType] ?: "Default",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = displayTypeColor
+                )
+            }
+
+            // Status indicator
+            val statusText = if (catalog.enabled) "ON" else "OFF"
+            val statusColor = if (catalog.enabled) Color(0xFF66BB6A) else Color.Gray
             Text(
-                text = DISPLAY_TYPE_LABELS[currentDisplayType] ?: "Default",
+                text = statusText,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
-                color = displayTypeColor
+                color = statusColor
             )
         }
-
-        // Status indicator
-        val statusText = if (catalog.enabled) "ON" else "OFF"
-        val statusColor = if (catalog.enabled) Color(0xFF66BB6A) else Color.Gray
-        Text(
-            text = statusText,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            color = statusColor
-        )
     }
 }
 
@@ -511,17 +532,10 @@ private fun CatalogDetailModal(
                             "WIDE" -> Color(0xFF4FC3F7)
                             else -> Color.Gray
                         }
-                        OutlinedButton(
+                        FocusableButton(
                             onClick = { localDisplayType = option },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = if (isSelected) optionColor else Color.White
-                            ),
-                            border = if (isSelected) {
-                                androidx.compose.foundation.BorderStroke(2.dp, optionColor)
-                            } else {
-                                androidx.compose.foundation.BorderStroke(1.dp, Color.Gray.copy(alpha = 0.5f))
-                            }
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -539,7 +553,7 @@ private fun CatalogDetailModal(
                 Spacer(Modifier.height(8.dp))
 
                 // ── Close Button ──
-                Button(
+                FocusableButton(
                     onClick = {
                         // Save and dismiss with the final state — no race condition
                         onDismiss(finalState)
