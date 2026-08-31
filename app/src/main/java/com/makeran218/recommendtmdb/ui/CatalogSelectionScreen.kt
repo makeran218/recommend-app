@@ -373,10 +373,16 @@ private fun CatalogChip(
                 MaterialTheme.shapes.small
             )
             .onPreviewKeyEvent { event ->
-                // Press OK/Enter on focused chip to open detail modal
-                if (event.type == KeyEventType.KeyUp && event.key == Key.Enter && isFocused) {
-                    onOpenDetail()
-                    true
+                // Handle opening the modal — D-pad center works on real Android TV hardware
+                if (event.type == KeyEventType.KeyUp && isFocused) {
+                    when (event.key) {
+                        Key.Enter, Key.DirectionCenter, Key.NumPadEnter -> {
+                            onOpenDetail()
+                            true
+                        }
+
+                        else -> false
+                    }
                 } else {
                     false
                 }
