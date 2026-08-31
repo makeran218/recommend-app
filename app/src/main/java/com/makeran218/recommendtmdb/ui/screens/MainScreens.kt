@@ -218,7 +218,7 @@ fun MainContent(
             ) {
                 FocusableButton(
                     onClick = { viewModel.syncChannels() },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.width(140.dp),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                 ) {
                     Icon(Icons.Default.Sync, null, modifier = Modifier.size(14.dp))
@@ -227,7 +227,7 @@ fun MainContent(
                 }
                 FocusableButton(
                     onClick = { showManageDialog = true },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.width(140.dp),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                 ) {
                     Icon(Icons.Default.Settings, null, modifier = Modifier.size(14.dp))
@@ -235,97 +235,97 @@ fun MainContent(
                     Text("Manage", fontSize = 12.sp)
                 }
             }
-        }
 
-        // ── Settings ──
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Poster Settings
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "Poster Settings:",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val selected = settings.displayType
-                    for ((key, label) in listOf("POSTER" to "Poster", "WIDE" to "Wide")) {
-                        FocusableButton(
-                            onClick = { viewModel.setDisplayType(key) },
-                            modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                label,
-                                fontSize = 11.sp,
-                                color = if (selected == key) MaterialTheme.colorScheme.primary else Color.White
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Player Settings
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "Player Settings:",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val selected = settings.playbackProvider
-                    for ((key, label) in listOf("nuvio" to "Nuvio", "stremio" to "Stremio")) {
-                        FocusableButton(
-                            onClick = { viewModel.setPlaybackProvider(key) },
-                            modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                label,
-                                fontSize = 11.sp,
-                                color = if (selected == key) MaterialTheme.colorScheme.primary else Color.White
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // ── Catalogs Summary ──
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    "Catalogs ($enabledCatalogs / $totalCatalogs)",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    if (enabledCatalogs == 0 && totalCatalogs > 0)
-                        "⚠ Tap button to enable catalogs"
-                    else
-                        "$enabledCatalogs catalog${if (enabledCatalogs != 1) "s" else ""} enabled",
-                    fontSize = 11.sp,
-                    color = Color.Gray
-                )
-            }
-            FocusableButton(
-                onClick = { showCatalogSelection = true },
-                modifier = Modifier.width(200.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+            // ── Settings ──
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Icon(Icons.Default.Settings, null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Manage Catalogs", fontSize = 12.sp)
+                // Poster Settings
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Poster Settings:",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val selected = settings.displayType
+                        for ((key, label) in listOf("POSTER" to "Poster", "WIDE" to "Wide")) {
+                            FocusableButton(
+                                onClick = { viewModel.setDisplayType(key) },
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    label,
+                                    fontSize = 11.sp,
+                                    color = if (selected == key) MaterialTheme.colorScheme.primary else Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Player Settings
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Player Settings:",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val selected = settings.playbackProvider
+                        for ((key, label) in listOf("nuvio" to "Nuvio", "stremio" to "Stremio")) {
+                            FocusableButton(
+                                onClick = { viewModel.setPlaybackProvider(key) },
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    label,
+                                    fontSize = 11.sp,
+                                    color = if (selected == key) MaterialTheme.colorScheme.primary else Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Catalogs Summary ──
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        "Catalogs ($enabledCatalogs / $totalCatalogs)",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        if (enabledCatalogs == 0 && totalCatalogs > 0)
+                            "⚠ Tap button to enable catalogs"
+                        else
+                            "$enabledCatalogs catalog${if (enabledCatalogs != 1) "s" else ""} enabled",
+                        fontSize = 11.sp,
+                        color = Color.Gray
+                    )
+                }
+                FocusableButton(
+                    onClick = { showCatalogSelection = true },
+                    modifier = Modifier.width(200.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Icon(Icons.Default.Settings, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Manage Catalogs", fontSize = 12.sp)
+                }
             }
         }
     }
