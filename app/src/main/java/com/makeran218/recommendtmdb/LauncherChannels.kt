@@ -35,15 +35,19 @@ class LauncherChannels(private val context: Context) {
          * Sync all channels synchronously — waits for ALL items to be inserted
          * before returning. This prevents race conditions where the launcher
          * reads channels before all items are inserted.
+         *
+         * @param context Application context
+         * @param itemsByCatalog Map of catalogKey -> ChannelItems
+         * @param catalogDisplayTypes Map of catalogKey -> resolved DisplayType
          */
         suspend fun syncAll(
             context: Context,
             itemsByCatalog: Map<String, List<ChannelItem>>,
-            displayType: DisplayType
+            catalogDisplayTypes: Map<String, DisplayType>
         ) {
             val launcher = LauncherChannels(context)
             try {
-                launcher.syncChannels(itemsByCatalog, displayType)
+                launcher.syncChannels(itemsByCatalog, catalogDisplayTypes)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to sync channels", e)
             }
@@ -57,14 +61,14 @@ class LauncherChannels(private val context: Context) {
      */
     private suspend fun syncChannels(
         itemsByCatalog: Map<String, List<ChannelItem>>,
-        displayType: DisplayType
+        catalogDisplayTypes: Map<String, DisplayType>
     ) {
         val mutex = Mutex()
         var totalInserted = 0
         val totalItems = itemsByCatalog.values.sumOf { it.size }
 
         Log.d(TAG, "Starting channel sync: ${itemsByCatalog.size} catalogs, $totalItems total items")
-        Log.d(TAG, "Current settings: displayType=$displayType")
+        Log.d(TAG, "Catalog display types: $catalogDisplayTypes")
 
         // Collect all existing catalog IDs so we can clean up stale channels later
         val existingChannels = context.contentResolver.query(
@@ -88,7 +92,8 @@ class LauncherChannels(private val context: Context) {
             val catalogInfo = parseCatalogKey(context, catalogKey) ?: continue
             if (items.isEmpty()) continue
 
-            Log.d(TAG, "Syncing catalog: ${catalogInfo.catalogName} (${items.size} items)")
+            val displayType = catalogDisplayTypes[catalogKey] ?: DisplayType.POSTER
+            Log.d(TAG, "Syncing catalog: ${catalogInfo.catalogName} (${items.size} items), displayType=$displayType")
 
             syncCatalog(context, catalogInfo, items, displayType, mutex) {
                 totalInserted++

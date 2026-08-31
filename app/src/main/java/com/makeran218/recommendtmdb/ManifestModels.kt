@@ -90,7 +90,8 @@ data class CatalogEntry(
     val catalogId: String,
     val catalogName: String,
     val catalogType: String, // "movie" or "series"
-    val enabled: Boolean = false
+    val enabled: Boolean = false,
+    val displayType: String = "DEFAULT" // "DEFAULT", "POSTER", or "WIDE"
 ) {
     val channelName: String = catalogName
     val channelDescription: String = when (catalogType) {

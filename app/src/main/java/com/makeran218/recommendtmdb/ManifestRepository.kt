@@ -18,6 +18,7 @@ object ManifestRepository {
 
     private val MANIFEST_URLS_KEY = stringPreferencesKey("manifest_urls")
     private val ENABLED_CATALOGS_KEY = stringSetPreferencesKey("enabled_catalogs")
+    private val CATALOG_DISPLAY_TYPES_KEY = stringPreferencesKey("catalog_display_types")
     private val CATALOG_CACHE_PREFIX = "catalog_cache_"
     private val MANIFEST_CACHE_KEY = "manifest_cache"
     private val LAST_SYNC_KEY = longPreferencesKey("last_sync_time")
@@ -181,6 +182,38 @@ object ManifestRepository {
     }
 
     /**
+     * Set the display type for a specific catalog.
+     * Stores as JSON map: { catalogKey: "DEFAULT"|"POSTER"|"WIDE" }
+     */
+    suspend fun setCatalogDisplayType(context: Context, catalogKey: String, displayType: String) {
+        context.manifestDataStore.edit { prefs ->
+            val existing = readCatalogDisplayTypes(context).first()
+            val updated = existing.toMutableMap().apply {
+                put(catalogKey, displayType)
+            }
+            prefs[CATALOG_DISPLAY_TYPES_KEY] = gson.toJson(updated)
+        }
+    }
+
+    /**
+     * Read all catalog display type overrides.
+     * Returns a map of catalogKey -> displayType.
+     */
+    fun readCatalogDisplayTypes(context: Context): Flow<Map<String, String>> {
+        return context.manifestDataStore.data.map { prefs ->
+            val json = prefs[CATALOG_DISPLAY_TYPES_KEY]
+            if (json.isNullOrEmpty()) return@map emptyMap()
+            try {
+                val type = object : com.google.gson.reflect.TypeToken<Map<String, String>>() {}.type
+                gson.fromJson(json, type) as Map<String, String>
+            } catch (e: Exception) {
+                android.util.Log.e("ManifestRepository", "Failed to read catalog display types", e)
+                emptyMap()
+            }
+        }
+    }
+
+    /**
      * Clear all cached data (for reset).
      * Sets known keys to empty/default values.
      */
@@ -188,6 +221,7 @@ object ManifestRepository {
         context.manifestDataStore.edit { prefs ->
             prefs[MANIFEST_URLS_KEY] = ""
             prefs[ENABLED_CATALOGS_KEY] = emptySet()
+            prefs[CATALOG_DISPLAY_TYPES_KEY] = ""
             prefs[LAST_SYNC_KEY] = 0L
         }
     }

@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 
 class SyncWorker(
     context: Context,
@@ -52,11 +53,14 @@ class SyncWorker(
                 return Result.failure()
             }
 
+            // Resolve per-catalog display types (catalog-specific override or global fallback)
+            val catalogDisplayTypes = resolveCatalogDisplayTypes(context, filteredItems.keys, displayType)
+
             // Update launcher channels
             LauncherChannels.syncAll(
                 context,
                 filteredItems,
-                displayType
+                catalogDisplayTypes
             )
 
             // Cache all catalog items
@@ -154,5 +158,33 @@ class SyncWorker(
         val parts = catalogKey.split("::", limit = 3)
         if (parts.size != 3) return Triple(null, null, null)
         return Triple(parts[0], parts[1], parts[2])
+    }
+
+    /**
+     * Resolve display type for each catalog.
+     * Uses catalog-specific setting if set, otherwise falls back to global displayType.
+     */
+    private suspend fun resolveCatalogDisplayTypes(
+        context: Context,
+        catalogKeys: Set<String>,
+        globalDisplayType: DisplayType
+    ): Map<String, DisplayType> {
+        val catalogDisplayTypes = mutableMapOf<String, DisplayType>()
+
+        // Load per-catalog overrides
+        val overrides = ManifestRepository.readCatalogDisplayTypes(context).firstOrNull() ?: emptyMap()
+
+        for (catalogKey in catalogKeys) {
+            val override = overrides[catalogKey]
+            val resolved = when (override) {
+                "POSTER" -> DisplayType.POSTER
+                "WIDE" -> DisplayType.WIDE
+                else -> globalDisplayType // DEFAULT falls back to global
+            }
+            catalogDisplayTypes[catalogKey] = resolved
+            Log.d(TAG, "Catalog $catalogKey -> displayType=$resolved (override=$override)")
+        }
+
+        return catalogDisplayTypes
     }
 }
