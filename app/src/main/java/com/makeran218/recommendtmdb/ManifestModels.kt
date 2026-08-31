@@ -54,6 +54,7 @@ data class MetaItem(
     val name: String,
     val poster: String?,
     val background: String?,
+    val landscapePoster: String?,
     val description: String?,
     val releaseInfo: String?,
     val released: String?,
@@ -105,6 +106,7 @@ data class ChannelItem(
     val name: String,
     val poster: String?,
     val background: String?,
+    val landscapePoster: String?,
     val description: String?,
     val releaseInfo: String?,
     val released: String?,
@@ -128,7 +130,7 @@ data class ChannelItem(
         get() = poster ?: posterFallback ?: "https://placehold.co/500x750/?text=No+Poster"
 
     val backdropUrl: String
-        get() = background ?: posterUrl
+        get() = landscapePoster ?: background ?: posterUrl
 
     val typeLabel: String get() = type
 }

@@ -123,6 +123,7 @@ class SyncWorker(
                     name = meta.name,
                     poster = meta.poster,
                     background = meta.background,
+                    landscapePoster = meta.landscapePoster,
                     description = meta.description,
                     releaseInfo = meta.releaseInfo,
                     released = meta.released,
