@@ -24,7 +24,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _syncInProgress = MutableStateFlow(false)
     val syncInProgress: StateFlow<Boolean> = _syncInProgress
 
-    private val _settings = MutableStateFlow(AppPreferences.Settings("nuvio", "POSTER"))
+    private val _settings = MutableStateFlow(AppPreferences.Settings("nuvio"))
     val settings: StateFlow<AppPreferences.Settings> = _settings
 
     private val _manifestUrls = MutableStateFlow<List<String>>(emptyList())
@@ -32,9 +32,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _catalogs = MutableStateFlow<Map<String, List<CatalogEntry>>>(emptyMap())
     val catalogs: StateFlow<Map<String, List<CatalogEntry>>> = _catalogs
-
-    private val _catalogDisplayTypes = MutableStateFlow<Map<String, String>>(emptyMap())
-    val catalogDisplayTypes: StateFlow<Map<String, String>> = _catalogDisplayTypes
 
     init {
         // Each collector must run in its own coroutine — collect() blocks
@@ -61,11 +58,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 _catalogs.value = updated
-            }
-        }
-        viewModelScope.launch {
-            ManifestRepository.readCatalogDisplayTypes(context).collect { types ->
-                _catalogDisplayTypes.value = types
             }
         }
     }
@@ -110,7 +102,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val allUrls = ManifestRepository.readManifestUrls(context).first()
             _manifestUrls.value = allUrls
             Log.d("VM", "addManifestUrl: saved=$saved, total URLs=${allUrls.size}")
-            refreshCatalogs()
+            // Fetch from network so catalogs appear immediately (cache is empty on first add)
+            refetchManifests()
         }
     }
 
@@ -210,12 +203,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun setCatalogDisplayType(key: String, displayType: String) {
-        viewModelScope.launch {
-            ManifestRepository.setCatalogDisplayType(context, key, displayType)
-        }
-    }
-
     // ── Sync ─────────────────────────────────────────────────────────
 
     fun syncChannels() {
@@ -243,9 +230,5 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setPlaybackProvider(provider: String) {
         viewModelScope.launch { AppPreferences.setPlaybackProvider(context, provider) }
-    }
-
-    fun setDisplayType(display: String) {
-        viewModelScope.launch { AppPreferences.setDisplayType(context, display) }
     }
 }

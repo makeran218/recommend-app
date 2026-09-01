@@ -95,8 +95,7 @@ data class CatalogEntry(
     val catalogId: String,
     val catalogName: String,
     val catalogType: String, // "movie" or "series"
-    val enabled: Boolean = false,
-    val displayType: String = "DEFAULT" // "DEFAULT", "POSTER", or "WIDE"
+    val enabled: Boolean = false
 ) {
     // Unique internal ID combining catalogId + type to avoid collisions
     // e.g., "tmdb.trending.movie" or "tmdb.trending.series"

@@ -140,7 +140,7 @@ fun MainScreen(viewModel: AppViewModel) {
     if (manifestUrls.isEmpty()) {
         SetupScreen(viewModel)
     } else {
-        MainContent(viewModel, manifestUrls, catalogs, settings)
+        MainContent(viewModel, manifestUrls, catalogs)
     }
 }
 

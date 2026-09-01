@@ -46,8 +46,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import com.makeran218.recommendtmdb.AppPreferences
 import com.makeran218.recommendtmdb.CatalogEntry
 import com.makeran218.recommendtmdb.ui.CatalogSelectionScreen
 import com.makeran218.recommendtmdb.ui.dialogs.AddManifestDialog
@@ -63,7 +61,6 @@ fun MainScreen(viewModel: AppViewModel) {
     val syncInProgress by viewModel.syncInProgress.collectAsState()
     val manifestUrls by viewModel.manifestUrls.collectAsState(initial = emptyList())
     val catalogs by viewModel.catalogs.collectAsState(initial = emptyMap())
-    val settings by viewModel.settings.collectAsState()
 
     if (syncInProgress) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -79,7 +76,7 @@ fun MainScreen(viewModel: AppViewModel) {
     if (manifestUrls.isEmpty()) {
         SetupScreen(viewModel)
     } else {
-        MainContent(viewModel, manifestUrls, catalogs, settings)
+        MainContent(viewModel, manifestUrls, catalogs)
     }
 }
 
@@ -162,9 +159,9 @@ fun SetupScreen(viewModel: AppViewModel) {
 fun MainContent(
     viewModel: AppViewModel,
     manifestUrls: List<String>,
-    catalogs: Map<String, List<CatalogEntry>>,
-    settings: AppPreferences.Settings
+    catalogs: Map<String, List<CatalogEntry>>
 ) {
+    val settings by viewModel.settings.collectAsState()
     var showManageDialog by remember { mutableStateOf(false) }
     var showCatalogSelection by remember { mutableStateOf(false) }
 
@@ -183,15 +180,12 @@ fun MainContent(
 
     if (showCatalogSelection) {
         // ── Catalog Selection — full screen, hide everything else ──
-        val catalogDisplayTypes by viewModel.catalogDisplayTypes.collectAsState(initial = emptyMap())
         CatalogSelectionScreen(
             allCatalogs = allCatalogs,
             enabledCount = enabledCatalogs,
             totalCount = totalCatalogs,
-            catalogDisplayTypes = catalogDisplayTypes,
             onBack = { showCatalogSelection = false },
-            onToggle = { key, enabled -> viewModel.toggleCatalog(key, enabled) },
-            onDisplayTypeChange = { key, displayType -> viewModel.setCatalogDisplayType(key, displayType) }
+            onToggle = { key, enabled -> viewModel.toggleCatalog(key, enabled) }
         )
     } else {
         // ── Main Content ──
@@ -236,38 +230,11 @@ fun MainContent(
                 }
             }
 
-            // ── Settings ──
+            // ── Player Settings ──
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Poster Settings
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Poster Settings:",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val selected = settings.displayType
-                        for ((key, label) in listOf("POSTER" to "Poster", "WIDE" to "Wide")) {
-                            FocusableButton(
-                                onClick = { viewModel.setDisplayType(key) },
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    label,
-                                    fontSize = 11.sp,
-                                    color = if (selected == key) MaterialTheme.colorScheme.primary else Color.White
-                                )
-                            }
-                        }
-                    }
-                }
-
                 // Player Settings
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
