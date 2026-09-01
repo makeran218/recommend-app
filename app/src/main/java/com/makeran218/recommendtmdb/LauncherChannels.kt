@@ -417,7 +417,7 @@ class LauncherChannels(private val context: Context) {
 
                 // Set preview video only if item has a trailer ytId
                 if (item.trailerYtId != null) {
-                    val videoUri = Uri.parse("http://192.168.2.50/youtube.m3u8?id=${item.trailerYtId}")
+                    val videoUri = Uri.parse("http://192.168.2.50/youtube.php?id=${item.trailerYtId}")
                     programBuilder.setPreviewVideoUri(videoUri)
                     Log.d(TAG, "  WIDE preview video: ${item.name} -> ytId=${item.trailerYtId} -> $videoUri")
                 } else {
