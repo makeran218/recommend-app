@@ -27,12 +27,6 @@ class SyncWorker(
             val settings = AppPreferences.readPreferences(context).first()
             DeepLinks.setProvider(DeepLinks.getProvider(settings.playbackProvider))
 
-            // Determine display type from settings
-            val displayType = when (settings.displayType) {
-                "WIDE" -> DisplayType.WIDE
-                else -> DisplayType.POSTER
-            }
-
             // Get enabled catalogs
             val enabledCatalogs = ManifestRepository.readEnabledCatalogs(context).first()
             if (enabledCatalogs.isEmpty()) {
@@ -56,15 +50,8 @@ class SyncWorker(
                 return Result.failure()
             }
 
-            // Resolve per-catalog display types (catalog-specific override or global fallback)
-            val catalogDisplayTypes = resolveCatalogDisplayTypes(context, filteredItems.keys, displayType)
-
             // Update launcher channels
-            LauncherChannels.syncAll(
-                context,
-                filteredItems,
-                catalogDisplayTypes
-            )
+            LauncherChannels.syncAll(context, filteredItems)
 
             // Cache all catalog items
             for ((catalogKey, items) in filteredItems) {
@@ -75,10 +62,7 @@ class SyncWorker(
             // Update last sync time
             ManifestRepository.setLastSyncTime(context, System.currentTimeMillis())
 
-            Log.d(
-                TAG,
-                "Sync completed. Catalogs: ${filteredItems.size}, Display: $displayType"
-            )
+            Log.d(TAG, "Sync completed. Catalogs: ${filteredItems.size}")
             return Result.success()
 
         } catch (e: Exception) {
@@ -175,31 +159,4 @@ class SyncWorker(
         return Pair(parts[0], parts[1])
     }
 
-    /**
-     * Resolve display type for each catalog.
-     * Uses catalog-specific setting if set, otherwise falls back to global displayType.
-     */
-    private suspend fun resolveCatalogDisplayTypes(
-        context: Context,
-        catalogKeys: Set<String>,
-        globalDisplayType: DisplayType
-    ): Map<String, DisplayType> {
-        val catalogDisplayTypes = mutableMapOf<String, DisplayType>()
-
-        // Load per-catalog overrides
-        val overrides = ManifestRepository.readCatalogDisplayTypes(context).firstOrNull() ?: emptyMap()
-
-        for (catalogKey in catalogKeys) {
-            val override = overrides[catalogKey]
-            val resolved = when (override) {
-                "POSTER" -> DisplayType.POSTER
-                "WIDE" -> DisplayType.WIDE
-                else -> globalDisplayType // DEFAULT falls back to global
-            }
-            catalogDisplayTypes[catalogKey] = resolved
-            Log.d(TAG, "Catalog $catalogKey -> displayType=$resolved (override=$override)")
-        }
-
-        return catalogDisplayTypes
-    }
 }
