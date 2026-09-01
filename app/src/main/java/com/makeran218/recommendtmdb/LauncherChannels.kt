@@ -38,16 +38,14 @@ class LauncherChannels(private val context: Context) {
          *
          * @param context Application context
          * @param itemsByCatalog Map of catalogKey -> ChannelItems
-         * @param catalogDisplayTypes Map of catalogKey -> resolved DisplayType
          */
         suspend fun syncAll(
             context: Context,
-            itemsByCatalog: Map<String, List<ChannelItem>>,
-            catalogDisplayTypes: Map<String, DisplayType>
+            itemsByCatalog: Map<String, List<ChannelItem>>
         ) {
             val launcher = LauncherChannels(context)
             try {
-                launcher.syncChannels(itemsByCatalog, catalogDisplayTypes)
+                launcher.syncChannels(itemsByCatalog)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to sync channels", e)
             }
@@ -60,8 +58,7 @@ class LauncherChannels(private val context: Context) {
      * recreation (which would require re-enabling in the launcher).
      */
     private suspend fun syncChannels(
-        itemsByCatalog: Map<String, List<ChannelItem>>,
-        catalogDisplayTypes: Map<String, DisplayType>
+        itemsByCatalog: Map<String, List<ChannelItem>>
     ) {
         val mutex = Mutex()
         var totalInserted = 0
@@ -71,12 +68,6 @@ class LauncherChannels(private val context: Context) {
         Log.d(TAG, "║              CHANNEL SYNC STARTED                     ║")
         Log.d(TAG, "╚═══════════════════════════════════════════════════════╝")
         Log.d(TAG, "Starting channel sync: ${itemsByCatalog.size} catalogs, $totalItems total items")
-        Log.d(TAG, "Catalog display types: $catalogDisplayTypes")
-
-        // Log all catalogs being synced
-        for ((catalogKey, displayType) in catalogDisplayTypes) {
-            Log.d(TAG, "  ── Catalog: $catalogKey → displayType=$displayType")
-        }
 
         // Collect all existing catalog keys so we can clean up stale channels later
         // Also delete old-format channels (using underscore) to avoid duplicates
@@ -122,10 +113,9 @@ class LauncherChannels(private val context: Context) {
             val catalogInfo = parseCatalogKey(context, catalogKey) ?: continue
             if (items.isEmpty()) continue
 
-            val displayType = catalogDisplayTypes[catalogKey] ?: DisplayType.POSTER
-            Log.d(TAG, "Syncing catalog: ${catalogInfo.catalogName} (${items.size} items), displayType=$displayType")
+            Log.d(TAG, "Syncing catalog: ${catalogInfo.catalogName} (${items.size} items)")
 
-            syncCatalog(context, catalogInfo, items, displayType, mutex) {
+            syncCatalog(context, catalogInfo, items, mutex) {
                 totalInserted++
                 if (totalInserted % 10 == 0 || totalInserted == totalItems) {
                     Log.d(TAG, "Inserted $totalInserted / $totalItems items...")
@@ -192,7 +182,6 @@ class LauncherChannels(private val context: Context) {
         context: Context,
         catalogInfo: CatalogInfo,
         items: List<ChannelItem>,
-        displayType: DisplayType,
         mutex: Mutex,
         onProgress: () -> Unit
     ) {
@@ -275,10 +264,10 @@ class LauncherChannels(private val context: Context) {
 
         for (item in items) {
             mutex.withLock {
-                createProgram(context, channelId, catalogInfo, item, displayType)
+                createProgram(context, channelId, catalogInfo, item)
             }
             onProgress()
-            Log.d(TAG, "Created program: ${item.name} (type=${item.type}, displayType=$displayType)")
+            Log.d(TAG, "Created program: ${item.name} (type=${item.type})")
         }
 
         Log.d(TAG, "Completed catalog: ${catalogInfo.catalogName} (${items.size} items)")
@@ -381,8 +370,7 @@ class LauncherChannels(private val context: Context) {
         context: Context,
         channelId: Long,
         catalogInfo: CatalogInfo,
-        item: ChannelItem,
-        displayType: DisplayType
+        item: ChannelItem
     ) {
         val deepLinkUri = DeepLinks.buildChannelUri(item)
         Log.d(TAG, "Building program: ${item.name} -> URI: $deepLinkUri")
@@ -399,30 +387,29 @@ class LauncherChannels(private val context: Context) {
             .setIntent(intent)
             .setType(if (item.type == "series") TYPE_TV_SHOW else TYPE_MOVIE)
 
-        when (displayType) {
-            DisplayType.POSTER -> {
-                val posterUri = Uri.parse(item.posterUrl)
-                programBuilder
-                    .setPosterArtUri(posterUri)
-                    .setPosterArtAspectRatio(ASPECT_RATIO_2_3)
+        // Always set 2:3 vertical poster as primary card layout if available
+        if (!item.posterUrl.isNullOrEmpty()) {
+            programBuilder
+                .setPosterArtUri(Uri.parse(item.posterUrl))
+                .setPosterArtAspectRatio(ASPECT_RATIO_2_3)
+        }
+
+        val hasVideo = !item.trailerYtId.isNullOrEmpty()
+        val hasBackdrop = !item.backdropUrl.isNullOrEmpty()
+
+        when {
+            hasVideo -> {
+                val videoUri = Uri.parse("http://192.168.2.50/youtube.php?id=${item.trailerYtId}")
+                programBuilder.setPreviewVideoUri(videoUri)
+                Log.d(TAG, "  Preview video: ${item.name} -> $videoUri")
             }
 
-            DisplayType.WIDE -> {
+            hasBackdrop -> {
                 val wideUri = Uri.parse(item.backdropUrl)
                 programBuilder
-                    .setPosterArtUri(wideUri)
-                    .setPosterArtAspectRatio(ASPECT_RATIO_16_9)
                     .setThumbnailUri(wideUri)
                     .setThumbnailAspectRatio(ASPECT_RATIO_16_9)
-
-                // Set preview video only if item has a trailer ytId
-                if (item.trailerYtId != null) {
-                    val videoUri = Uri.parse("http://192.168.2.50/youtube.php?id=${item.trailerYtId}")
-                    programBuilder.setPreviewVideoUri(videoUri)
-                    Log.d(TAG, "  WIDE preview video: ${item.name} -> ytId=${item.trailerYtId} -> $videoUri")
-                } else {
-                    Log.d(TAG, "  WIDE no trailer: ${item.name} (no ytId)")
-                }
+                Log.d(TAG, "  Focus backdrop fallback (16:9): ${item.name} -> $wideUri")
             }
         }
 
@@ -465,9 +452,4 @@ class LauncherChannels(private val context: Context) {
             Log.w(TAG, "Failed to delete channel for catalog $uniqueId", e)
         }
     }
-}
-
-enum class DisplayType {
-    POSTER,  // Vertical poster (2:3)
-    WIDE     // Wide landscape (16:9)
 }
