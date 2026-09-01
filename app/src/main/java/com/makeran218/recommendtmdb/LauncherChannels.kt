@@ -414,6 +414,15 @@ class LauncherChannels(private val context: Context) {
                     .setPosterArtAspectRatio(ASPECT_RATIO_16_9)
                     .setThumbnailUri(wideUri)
                     .setThumbnailAspectRatio(ASPECT_RATIO_16_9)
+
+                // Set preview video only if item has a trailer ytId
+                if (item.trailerYtId != null) {
+                    val videoUri = Uri.parse("http://192.168.2.50/youtube.m3u8?id=${item.trailerYtId}")
+                    programBuilder.setPreviewVideoUri(videoUri)
+                    Log.d(TAG, "  WIDE preview video: ${item.name} -> ytId=${item.trailerYtId} -> $videoUri")
+                } else {
+                    Log.d(TAG, "  WIDE no trailer: ${item.name} (no ytId)")
+                }
             }
         }
 

@@ -133,6 +133,8 @@ class SyncWorker(
 
             // Convert MetaItems to ChannelItems
             val items = response.metas.map { meta ->
+                // Extract first ytId from trailerStreams
+                val trailerYtId = meta.trailerStreams?.firstOrNull()?.ytId
                 ChannelItem(
                     id = meta.id,
                     type = meta.type,
@@ -149,7 +151,8 @@ class SyncWorker(
                     imdbRating = meta.imdbRating?.toDoubleOrNull(),
                     genres = meta.genres,
                     posterFallback = meta.posterFallback,
-                    logo = meta.logo
+                    logo = meta.logo,
+                    trailerYtId = trailerYtId
                 )
             }
 

@@ -48,6 +48,10 @@ data class CatalogResponse(
     val metas: List<MetaItem>
 )
 
+data class TrailerStream(
+    val ytId: String?
+)
+
 data class MetaItem(
     val id: String,
     val type: String,
@@ -62,6 +66,7 @@ data class MetaItem(
     val status: String?,
     val runtime: String?,
     val trailers: List<Trailer>?,
+    val trailerStreams: List<TrailerStream>?,
     val links: List<Link>?,
     val genres: List<String>?,
     val posterFallback: String?,
@@ -121,7 +126,8 @@ data class ChannelItem(
     val imdbRating: Double?,
     val genres: List<String>?,
     val posterFallback: String?,
-    val logo: String?
+    val logo: String?,
+    val trailerYtId: String?  // YouTube ID from trailerStreams for WIDE preview video
 ) {
     val displayName: String get() = name
 
