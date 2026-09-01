@@ -414,7 +414,6 @@ class LauncherChannels(private val context: Context) {
                     .setPosterArtAspectRatio(ASPECT_RATIO_16_9)
                     .setThumbnailUri(wideUri)
                     .setThumbnailAspectRatio(ASPECT_RATIO_16_9)
-                    .setPreviewVideoUri(wideUri)
             }
         }
 
