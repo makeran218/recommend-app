@@ -41,6 +41,9 @@ class SyncWorker(
             }
 
             Log.d(TAG, "Syncing ${enabledCatalogs.size} catalog(s)...")
+            for (key in enabledCatalogs) {
+                Log.d(TAG, "  ENABLED: $key")
+            }
 
             // Fetch all enabled catalogs sequentially
             val itemsByCatalog = fetchCatalogData(enabledCatalogs)
@@ -105,12 +108,21 @@ class SyncWorker(
         return try {
             Log.d(TAG, "Fetching catalog from network: $catalogKey")
 
-            // Parse the catalog key to get manifest URL, type, and catalog ID
-            val (manifestUrl, catalogType, catalogId) = parseCatalogKey(catalogKey)
-            if (manifestUrl == null || catalogType == null || catalogId == null) {
+            // Parse the catalog key to get manifest URL and uniqueId
+            val (manifestUrl, uniqueId) = parseCatalogKey(catalogKey)
+            if (manifestUrl == null || uniqueId == null) {
                 Log.w(TAG, "Invalid catalog key: $catalogKey")
                 return emptyList()
             }
+
+            // Extract catalogId and catalogType from uniqueId (format: catalogId.catalogType)
+            val lastDot = uniqueId.lastIndexOf('.')
+            if (lastDot <= 0) {
+                Log.w(TAG, "Invalid uniqueId format: $uniqueId")
+                return emptyList()
+            }
+            val catalogId = uniqueId.substring(0, lastDot)
+            val catalogType = uniqueId.substring(lastDot + 1)
 
             // Fetch manifest to get base URL
             val baseUrl = XperienceClient.extractBaseUrl(manifestUrl)
@@ -134,7 +146,7 @@ class SyncWorker(
                     imdb_id = meta.imdb_id,
                     status = meta.status,
                     runtime = meta.runtime,
-                    imdbRating = meta.imdbRating,
+                    imdbRating = meta.imdbRating?.toDoubleOrNull(),
                     genres = meta.genres,
                     posterFallback = meta.posterFallback,
                     logo = meta.logo
@@ -151,13 +163,13 @@ class SyncWorker(
     }
 
     /**
-     * Parse catalog key to extract manifest URL, catalog type, and catalog ID.
-     * Key format: "{manifestUrl}::{catalogType}::{catalogId}"
+     * Parse catalog key to extract manifest URL and uniqueId.
+     * Key format: "{manifestUrl}::{uniqueId}" where uniqueId = "{catalogId}.{catalogType}"
      */
-    private fun parseCatalogKey(catalogKey: String): Triple<String?, String?, String?> {
-        val parts = catalogKey.split("::", limit = 3)
-        if (parts.size != 3) return Triple(null, null, null)
-        return Triple(parts[0], parts[1], parts[2])
+    private fun parseCatalogKey(catalogKey: String): Pair<String?, String?> {
+        val parts = catalogKey.split("::", limit = 2)
+        if (parts.size != 2) return Pair(null, null)
+        return Pair(parts[0], parts[1])
     }
 
     /**

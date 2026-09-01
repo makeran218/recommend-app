@@ -79,7 +79,7 @@ data class CatalogDetailState(
     val displayType: String
 ) {
     val key: String
-        get() = "$manifestUrl::${catalog.catalogType}::${catalog.catalogId}"
+        get() = "$manifestUrl::${catalog.uniqueId}"
 }
 
 @Composable
@@ -157,7 +157,7 @@ fun CatalogSelectionScreen(
                         ) {
                             for ((colIndex, item) in rowItems.withIndex()) {
                                 val (catalog, manifestUrl) = item
-                                val key = "$manifestUrl::${catalog.catalogType}::${catalog.catalogId}"
+                                val key = "$manifestUrl::${catalog.uniqueId}"
                                 val isLeftEdge = colIndex == 0
                                 val isRightEdge = colIndex == (CATALOG_COLUMNS - 1)
                                 val isTargetForFocus = pendingFocusColumn == colIndex
@@ -335,7 +335,7 @@ private fun CatalogChip(
     currentDisplayType: String = "DEFAULT",
     onOpenDetail: () -> Unit
 ) {
-    val key = "$manifestUrl::${catalog.catalogType}::${catalog.catalogId}"
+    val key = "$manifestUrl::${catalog.uniqueId}"
     var isFocused by remember(key) { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 

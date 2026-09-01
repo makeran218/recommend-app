@@ -66,7 +66,7 @@ data class MetaItem(
     val genres: List<String>?,
     val posterFallback: String?,
     val logo: String?,
-    val imdbRating: Double?
+    val imdbRating: String?  // Can be "N/A" or a numeric string like "8.5"
 )
 
 data class Trailer(
@@ -93,6 +93,10 @@ data class CatalogEntry(
     val enabled: Boolean = false,
     val displayType: String = "DEFAULT" // "DEFAULT", "POSTER", or "WIDE"
 ) {
+    // Unique internal ID combining catalogId + type to avoid collisions
+    // e.g., "tmdb.trending.movie" or "tmdb.trending.series"
+    val uniqueId: String = "${catalogId}.${catalogType}"
+
     val channelName: String = catalogName
     val channelDescription: String = when (catalogType) {
         "movie" -> "Movie catalog"

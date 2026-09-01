@@ -82,7 +82,9 @@ object ManifestRepository {
      */
     fun readEnabledCatalogs(context: Context): Flow<Set<String>> {
         return context.manifestDataStore.data.map { prefs ->
-            prefs[ENABLED_CATALOGS_KEY] ?: emptySet()
+            val result = prefs[ENABLED_CATALOGS_KEY] ?: emptySet()
+            android.util.Log.d("ManifestRepository", "READ enabled catalogs (${result.size}): $result")
+            result
         }
     }
 
@@ -98,6 +100,10 @@ object ManifestRepository {
                 existing - catalogKey
             }
             prefs[ENABLED_CATALOGS_KEY] = updated
+            android.util.Log.d(
+                "ManifestRepository",
+                "TOGGLE: $catalogKey = $enabled | Set now has ${updated.size} items: $updated"
+            )
         }
     }
 

@@ -57,7 +57,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val current = _catalogs.value
                 val updated = current.mapValues { (manifestUrl, catalogList) ->
                     catalogList.map { c ->
-                        c.copy(enabled = enabled.contains("$manifestUrl::${c.catalogType}::${c.catalogId}"))
+                        c.copy(enabled = enabled.contains("$manifestUrl::${c.uniqueId}"))
                     }
                 }
                 _catalogs.value = updated
@@ -82,7 +82,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val cached = ManifestRepository.loadCachedCatalogs(context, manifestUrl)
                 if (cached != null) {
                     newCatalogs[manifestUrl] = cached.map { c ->
-                        c.copy(enabled = enabled.contains("$manifestUrl::${c.catalogType}::${c.catalogId}"))
+                        c.copy(enabled = enabled.contains("$manifestUrl::${c.uniqueId}"))
                     }
                 }
             }
@@ -137,22 +137,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     try {
                         val manifest = XperienceClient.fetchManifest(manifestUrl)
                         val entries = manifest.catalogs
-                            .filter {
-                                !it.id.startsWith("xperience.search") &&
-                                        it.extraRequired?.contains("genre") != true
+                            .filter { c ->
+                                // Exclude search catalogs (any catalog with extra field named "search")
+                                !c.id.startsWith("search.") &&
+                                        c.extra.none { it.name == "search" }
                             }
                             .map { c ->
+                                val uniqueId = "${c.id}.${c.type}"
                                 CatalogEntry(
                                     c.id,
                                     c.name,
                                     c.type,
-                                    enabled.contains("$manifestUrl::${c.type}::${c.id}")
+                                    enabled.contains("$manifestUrl::$uniqueId")
                                 )
                             }
 
                         ManifestRepository.cacheManifest(context, manifestUrl, entries)
                         newCatalogs[manifestUrl] = entries
                         Log.d("VM", "Refetched ${entries.size} catalogs for $manifestUrl")
+                        for (entry in entries) {
+                            Log.d(
+                                "VM",
+                                "  Catalog: ${entry.catalogName} | Type: ${entry.catalogType} | ID: ${entry.catalogId}"
+                            )
+                        }
                     } catch (e: Exception) {
                         Log.e("VM", "Failed to refetch manifest: $manifestUrl", e)
                     }
@@ -180,7 +188,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val cached = ManifestRepository.loadCachedCatalogs(context, manifestUrl)
                     if (cached != null) {
                         newCatalogs[manifestUrl] = cached.map { c ->
-                            c.copy(enabled = enabled.contains("$manifestUrl::${c.catalogType}::${c.catalogId}"))
+                            c.copy(enabled = enabled.contains("$manifestUrl::${c.uniqueId}"))
                         }
                     }
                 }
