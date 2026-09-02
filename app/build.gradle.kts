@@ -23,6 +23,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -46,7 +47,6 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.foundation)
-    implementation(libs.androidx.compose.runtime)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -64,4 +64,13 @@ dependencies {
 
     // DataStore for preferences
     implementation(libs.androidx.datastore.preferences)
+
+    // Video stream extraction (NewPipe Extractor via JitPack)
+    implementation("com.github.teamnewpipe:NewPipeExtractor:0.26.5")
+
+    // Lightweight HTTP server for local video proxy
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
+
+    // Desugaring for NewPipe Extractor (required for minSdk < 33)
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.0.4")
 }

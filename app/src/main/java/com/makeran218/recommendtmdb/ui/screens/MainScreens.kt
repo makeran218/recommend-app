@@ -33,6 +33,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -258,6 +260,66 @@ fun MainContent(
                                     color = if (selected == key) MaterialTheme.colorScheme.primary else Color.White
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            // ── Trailer Settings ──
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Trailer Source:",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val selected = settings.trailerSource
+                        for ((key, label) in listOf("local" to "Local", "server" to "Server")) {
+                            FocusableButton(
+                                onClick = { viewModel.setTrailerSource(key) },
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    label,
+                                    fontSize = 11.sp,
+                                    color = if (selected == key) MaterialTheme.colorScheme.primary else Color.White
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    // Server URL input (only shown when server mode is selected)
+                    if (settings.trailerSource == "server") {
+                        var serverUrl by remember { mutableStateOf(settings.trailerServerUrl) }
+                        LaunchedEffect(settings.trailerServerUrl) {
+                            serverUrl = settings.trailerServerUrl
+                        }
+                        OutlinedTextField(
+                            value = serverUrl,
+                            onValueChange = { serverUrl = it },
+                            label = { Text("Server URL") },
+                            modifier = Modifier.fillMaxWidth(),
+                            textStyle = TextStyle(fontSize = 10.sp),
+                            singleLine = true
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        FocusableButton(
+                            onClick = { viewModel.setTrailerServerUrl(serverUrl) },
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                "Save URL",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
                     }
                 }

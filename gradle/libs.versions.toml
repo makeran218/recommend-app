@@ -12,6 +12,7 @@ lifecycle = "2.8.7"
 composeBom = "2024.09.00"
 okhttp = "4.12.0"
 gson = "2.12.1"
+newpipe = "0.26.5"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -29,7 +30,7 @@ androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", versi
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
-androidx-compose-runtime = { group = "androidx.compose.runtime", name = "runtime" }
+newpipe-extractor = { group = "com.github.teamnewpipe", name = "NewPipeExtractor", version = "0.26.5" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.first
 import java.util.HashMap
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -266,6 +267,7 @@ class LauncherChannels(private val context: Context) {
             mutex.withLock {
                 createProgram(context, channelId, catalogInfo, item)
             }
+            // suspend function, but withLock handles it correctly
             onProgress()
             Log.d(TAG, "Created program: ${item.name} (type=${item.type})")
         }
@@ -366,7 +368,7 @@ class LauncherChannels(private val context: Context) {
         return null
     }
 
-    private fun createProgram(
+    private suspend fun createProgram(
         context: Context,
         channelId: Long,
         catalogInfo: CatalogInfo,
@@ -396,9 +398,10 @@ class LauncherChannels(private val context: Context) {
                 .setThumbnailUri(wideUri)
                 .setThumbnailAspectRatio(ASPECT_RATIO_16_9)
 
-            val videoUri = Uri.parse("http://192.168.2.50/youtube.php?id=${item.trailerYtId}")
+            // Get trailer URL based on settings (local NewPipe or remote server)
+            val videoUri = Uri.parse(getTrailerUrl(context, item.trailerYtId!!))
             programBuilder.setPreviewVideoUri(videoUri)
-            Log.d(TAG, "  Wide + video: ${item.name} -> ytId=${item.trailerYtId} -> $videoUri")
+            Log.d(TAG, "  Wide + video: ${item.name} -> ${getTrailerUrl(context, item.trailerYtId!!)}")
         } else {
             val posterUri = Uri.parse(item.posterUrl)
             programBuilder
@@ -413,6 +416,18 @@ class LauncherChannels(private val context: Context) {
             TvContractCompat.PreviewPrograms.CONTENT_URI,
             program.toContentValues()
         )
+    }
+
+    /**
+     * Get the trailer URL based on settings.
+     * Returns local proxy URL if trailerSource is "local", or remote server URL if "server".
+     */
+    private suspend fun getTrailerUrl(context: Context, videoId: String): String {
+        val settings = AppPreferences.readPreferences(context).first()
+        return when (settings.trailerSource) {
+            "server" -> "${settings.trailerServerUrl}/youtube.php?id=$videoId"
+            else -> LocalVideoProxy.getProxyUrl(videoId)
+        }
     }
 
     /**

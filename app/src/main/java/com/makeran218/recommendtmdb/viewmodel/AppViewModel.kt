@@ -27,6 +27,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _settings = MutableStateFlow(AppPreferences.Settings("nuvio"))
     val settings: StateFlow<AppPreferences.Settings> = _settings
 
+    fun getTrailerUrl(context: android.content.Context, videoId: String): String {
+        val s = _settings.value
+        return when (s.trailerSource) {
+            "server" -> "$s.trailerServerUrl/youtube.php?id=$videoId"
+            else -> com.makeran218.recommendtmdb.LocalVideoProxy.getProxyUrl(videoId)
+        }
+    }
+
     private val _manifestUrls = MutableStateFlow<List<String>>(emptyList())
     val manifestUrls: StateFlow<List<String>> = _manifestUrls
 
@@ -230,5 +238,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setPlaybackProvider(provider: String) {
         viewModelScope.launch { AppPreferences.setPlaybackProvider(context, provider) }
+    }
+
+    fun setTrailerSource(source: String) {
+        viewModelScope.launch { AppPreferences.setTrailerSource(context, source) }
+    }
+
+    fun setTrailerServerUrl(url: String) {
+        viewModelScope.launch { AppPreferences.setTrailerServerUrl(context, url) }
     }
 }

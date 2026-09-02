@@ -66,6 +66,9 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        // Start local video proxy server as foreground service
+        VideoProxyService.startService(this)
+
         val viewModel = AppViewModel(application)
 
         setContent {

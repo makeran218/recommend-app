@@ -86,7 +86,7 @@ class SyncWorker(
 
     /**
      * Fetch items for a single catalog.
-     * Always fetches fresh data from network to ensure current settings are used.
+     * Only stores the YouTube video ID — stream URL is extracted on-demand by LocalVideoProxy.
      */
     private suspend fun fetchCatalogItems(catalogKey: String): List<ChannelItem> {
         return try {
@@ -117,7 +117,7 @@ class SyncWorker(
 
             // Convert MetaItems to ChannelItems
             val items = response.metas.map { meta ->
-                // Extract first ytId from trailerStreams
+                // Extract first ytId from trailerStreams — stored for on-demand extraction
                 val trailerYtId = meta.trailerStreams?.firstOrNull()?.ytId
                 ChannelItem(
                     id = meta.id,

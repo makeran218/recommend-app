@@ -126,7 +126,7 @@ data class ChannelItem(
     val genres: List<String>?,
     val posterFallback: String?,
     val logo: String?,
-    val trailerYtId: String?  // YouTube ID from trailerStreams for WIDE preview video
+    val trailerYtId: String?  // YouTube ID from trailerStreams — URL extracted on-demand by LocalVideoProxy
 ) {
     val displayName: String get() = name
 
